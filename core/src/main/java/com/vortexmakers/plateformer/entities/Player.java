@@ -39,14 +39,14 @@ public class Player implements GameEntity {
         // Déplacement horizontal simple
         if (Gdx.input.isKeyPressed(Input.Keys.RIGHT) || Gdx.input.isKeyPressed(Input.Keys.D)) {
             velocity.x = Constants.PLAYER_SPEED;
-        } else if (Gdx.input.isKeyPressed(Input.Keys.LEFT) || Gdx.input.isKeyPressed(Input.Keys.Q)) {
+        } else if (Gdx.input.isKeyPressed(Input.Keys.LEFT) || Gdx.input.isKeyPressed(Input.Keys.A)) {
             velocity.x = -Constants.PLAYER_SPEED;
         } else {
             velocity.x = 0;
         }
 
         // Saut aussi avec Z ou UP (pour convenances)
-        if (Gdx.input.isKeyJustPressed(Input.Keys.SPACE) || Gdx.input.isKeyJustPressed(Input.Keys.Z) || Gdx.input.isKeyJustPressed(Input.Keys.UP) && isGrounded) {
+        if ((Gdx.input.isKeyJustPressed(Input.Keys.SPACE) || Gdx.input.isKeyJustPressed(Input.Keys.W) || Gdx.input.isKeyJustPressed(Input.Keys.UP)) && isGrounded) {
             velocity.y = Constants.JUMP_FORCE;
             isGrounded = false;
         }

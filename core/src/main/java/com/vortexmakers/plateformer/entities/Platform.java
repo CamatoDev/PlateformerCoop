@@ -14,6 +14,10 @@ public class Platform implements GameEntity {
         bounds = new Rectangle(x, y, width, Constants.PLATFORM_HEIGHT);
         debugRenderer = new ShapeRenderer();
     }
+    public Platform(float x, float y, float width, float height) {
+        bounds = new Rectangle(x, y, width, height);
+        debugRenderer = new ShapeRenderer();
+    }
 
     @Override
     public void update(float deltaTime) {
@@ -33,7 +37,9 @@ public class Platform implements GameEntity {
     }
 
     @Override
-    public Rectangle getBounds() { return bounds; }
+    public Rectangle getBounds() {
+        return bounds;
+    }
 
     public void dispose() {
         debugRenderer.dispose();

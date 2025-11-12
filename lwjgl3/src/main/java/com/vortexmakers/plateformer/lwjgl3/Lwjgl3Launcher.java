@@ -3,6 +3,7 @@ package com.vortexmakers.plateformer.lwjgl3;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application;
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
 import com.vortexmakers.drop.Drop;
+import com.vortexmakers.plateformer.core.PlateformerGame;
 
 
 public class Lwjgl3Launcher {
@@ -14,6 +15,6 @@ public class Lwjgl3Launcher {
         config.setWindowedMode(1080, 720);
         config.setWindowIcon("libgdx128.png", "libgdx64.png", "libgdx32.png", "libgdx16.png");
         //config.setResizable(false);
-        new Lwjgl3Application(new Drop(), config);
+        new Lwjgl3Application(new PlateformerGame(), config);
     }
 }
