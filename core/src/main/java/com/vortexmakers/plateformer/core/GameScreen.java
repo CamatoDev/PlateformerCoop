@@ -37,13 +37,19 @@ public class GameScreen implements Screen {
 
     private void createTestLevel() {
         // Plateforme de base (sol)
-        platforms.add(new Platform(0, 0, Constants.VIEWPORT_WIDTH));
+        //platforms.add(new Platform(0, 0, Constants.VIEWPORT_WIDTH));
+        platforms.add(new Platform(0, 0, 150));
+        platforms.add(new Platform(216, 0, 150));
+        platforms.add(new Platform(216 * 2, 0, 150));
+        platforms.add(new Platform(216 * 3, 0, 150));
+        platforms.add(new Platform(216 * 4, 0, 150));
+        platforms.add(new Platform(216 * 5, 0, 150));
 
         // Quelques plateformes de test
-        platforms.add(new Platform(200, 90, 100));
-        platforms.add(new Platform(400, 250, 100));
-        platforms.add(new Platform(100, 350, 80));
-        platforms.add(new Platform(600, 200, 120));
+        platforms.add(new Platform(200, 80, 100));
+        platforms.add(new Platform(550, 140, 100));
+        platforms.add(new Platform(100, 160, 85));
+        platforms.add(new Platform(700, 80, 120));
         platforms.add(new Platform(500, Constants.PLATFORM_HEIGHT, 50, 80));
     }
 
@@ -78,7 +84,7 @@ public class GameScreen implements Screen {
     private void updateCamera() {
         // Caméra suit le joueur
         camera.position.x = player.getPosition().x + 150; // Légère avance
-        camera.position.y = Constants.VIEWPORT_HEIGHT / 2;
+        camera.position.y = (float) Constants.VIEWPORT_HEIGHT / 2;
         camera.update();
     }
 
