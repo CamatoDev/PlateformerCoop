@@ -6,6 +6,7 @@ import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.utils.Array;
+import com.vortexmakers.plateformer.entities.Collectible;
 import com.vortexmakers.plateformer.entities.Player;
 import com.vortexmakers.plateformer.entities.Platform;
 import com.vortexmakers.plateformer.systems.PhysicsSystem;
@@ -18,9 +19,13 @@ public class GameScreen implements Screen {
     private SpriteBatch batch;
 
     private Player player;
+    // Score du joueur
+    private int playerScore;
+
     private Array<Platform> platforms;
+    private Array<Collectible> collectibles;
+
     private PhysicsSystem physicsSystem;
-    private ShapeRenderer debugRenderer;
 
     // Échelle d'affichage
     private float scaleX, scaleY;
@@ -36,13 +41,16 @@ public class GameScreen implements Screen {
 
         batch = new SpriteBatch();
 
-        debugRenderer = new ShapeRenderer();
-
         // Création des entités
         player = new Player(50, 300);
         platforms = new Array<>();
-        createTestLevel();
+        collectibles = new Array<>();
 
+        playerScore = 0;
+
+         // Création des éléments du niveau
+        createTestLevel();
+        createCollectibles();
         physicsSystem = new PhysicsSystem();
     }
 
@@ -80,6 +88,26 @@ public class GameScreen implements Screen {
         platforms.add(new Platform(2900, 80, 200));
     }
 
+    private void createCollectibles() {
+        // COLLECTIBLES SUR LES PLATEFORMES PRINCIPALES
+
+        // Plateformes basses (faciles)
+        collectibles.add(new Collectible(250, 120));   // Sur plateforme à 200,80
+        collectibles.add(new Collectible(600, 180));   // Sur plateforme à 550,140
+        collectibles.add(new Collectible(780, 100));   // Sur plateforme à 720,80
+
+        // Plateformes hautes (plus difficiles)
+        collectibles.add(new Collectible(1200, 220));  // Sur plateforme à 1150,200
+        collectibles.add(new Collectible(1700, 220));  // Sur plateforme à 1700,160
+        collectibles.add(new Collectible(2050, 250));  // Sur plateforme à 2100,200
+
+        // Collectibles nécessitant des sauts précis
+        collectibles.add(new Collectible(400, 250));   // Haut de la plateforme à 400,150
+        collectibles.add(new Collectible(1400, 210));  // Haut de la plateforme à 1400,160
+
+        System.out.println("Création de " + collectibles.size + " collectibles");
+    }
+
     @Override
     public void render(float delta) {
         // Mise à jour
@@ -92,15 +120,14 @@ public class GameScreen implements Screen {
         batch.setProjectionMatrix(gameCamera.combined);
         batch.begin();
 
-        batch.end();
-
-
-
-        batch.begin();
-
         // Dessiner les plateformes
         for (Platform platform : platforms) {
             platform.render(batch);
+        }
+
+        // Dessiner les COLLECTIBLES
+        for (Collectible collectible : collectibles) {
+            collectible.render(batch);
         }
 
         // Dessiner le joueur
@@ -108,15 +135,22 @@ public class GameScreen implements Screen {
 
         batch.end();
 
-
-
         // Mettre à jour la caméra
         updateCamera();
+        // Mise à jour des collectibles
+        updateCollectibles();
     }
 
     private void update(float delta) {
         player.update(delta);
+        // Pour les collisions avec les platform
         physicsSystem.checkCollisions(player, platforms);
+        // Pour les collisions avec les collectibles
+        int collectedThisFrame = physicsSystem.checkCollectibleCollisions(player, collectibles);
+        if (collectedThisFrame > 0) {
+            playerScore += collectedThisFrame;
+            System.out.println("Score: " + playerScore + " (+" + collectedThisFrame + ")");
+        }
     }
 
     private void updateCamera() {
@@ -133,6 +167,22 @@ public class GameScreen implements Screen {
         gameCamera.position.x = targetX;
         gameCamera.position.y = Constants.GAME_HEIGHT / 2;
         gameCamera.update();
+    }
+
+    private void updateCollectibles() {
+        // Mettre à jour chaque collectible
+        for (Collectible collectible : collectibles) {
+            collectible.update(Gdx.graphics.getDeltaTime());
+        }
+
+        // Supprimer les collectibles complètement collectés
+        for (int i = collectibles.size - 1; i >= 0; i--) {
+            if (collectibles.get(i).isFullyCollected()) {
+                Collectible removed = collectibles.removeIndex(i);
+                removed.dispose();
+                System.out.println("Collectible supprimé, score: " + playerScore);
+            }
+        }
     }
 
     @Override
@@ -176,6 +226,8 @@ public class GameScreen implements Screen {
         for (Platform platform : platforms) {
             platform.dispose();
         }
-        debugRenderer.dispose();
+        for (Collectible collectible : collectibles) {
+            collectible.dispose();
+        }
     }
 }

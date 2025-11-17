@@ -4,6 +4,7 @@ package com.vortexmakers.plateformer.systems;
 // IMPORTATIONS ===========================================
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.utils.Array;
+import com.vortexmakers.plateformer.entities.Collectible;
 import com.vortexmakers.plateformer.entities.Player;
 import com.vortexmakers.plateformer.entities.Platform;
 
@@ -128,5 +129,33 @@ public class PhysicsSystem {
 
         // Par défaut, le joueur n'est pas grounded
         return false;
+    }
+
+    /**
+     * VÉRIFICATION DES COLLISIONS AVEC LES COLLECTIBLES
+     *
+     * @param player Le joueur
+     * @param collectibles Liste des collectibles
+     * @return Le nombre de collectibles ramassés pendant cette frame
+     *
+     * Pourquoi retourner un count :
+     * → Permet à GameScreen de mettre à jour le score
+     * → Donne du feedback sur l'efficacité des collisions
+     */
+    public int checkCollectibleCollisions(Player player, Array<Collectible> collectibles) {
+        int collectedCount = 0;
+        Rectangle playerBounds = player.getBounds();
+
+        for (Collectible collectible : collectibles) {
+            // Vérifier seulement les collectibles disponibles
+            if (collectible.isAvailable() && playerBounds.overlaps(collectible.getBounds())) {
+                collectible.collect();
+                collectedCount++;
+
+                System.out.println("Collision avec collectible détectée !");
+            }
+        }
+
+        return collectedCount;
     }
 }
