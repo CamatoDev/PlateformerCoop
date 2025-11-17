@@ -44,11 +44,6 @@ public class GameScreen implements Screen {
         createTestLevel();
 
         physicsSystem = new PhysicsSystem();
-
-        System.out.println("=== INITIALISATION ===");
-        System.out.println("Échelle: " + scaleX + "x" + scaleY);
-        System.out.println("Jeu: " + Constants.GAME_WIDTH + "x" + Constants.GAME_HEIGHT);
-        System.out.println("Écran: " + Constants.SCREEN_WIDTH + "x" + Constants.SCREEN_HEIGHT);
     }
 
     private void createTestLevel() {
@@ -63,7 +58,7 @@ public class GameScreen implements Screen {
 
         // SOL CONTINU
         for (int i = 0; i < 15; i++) {
-            platforms.add(new Platform(i * 200, 0, 200));
+            platforms.add(new Platform(i * 200, 0, 200)); // ou width: 150
         }
 
         // Quelques plateformes de test
@@ -81,6 +76,8 @@ public class GameScreen implements Screen {
         // Ajoutons encore plus de plateformes pour vraiment voir le défilement
         platforms.add(new Platform(2000, 200, 200));
         platforms.add(new Platform(2300, 100, 150));
+        platforms.add(new Platform(2600, 150, 120));
+        platforms.add(new Platform(2900, 80, 200));
     }
 
     @Override
@@ -97,14 +94,7 @@ public class GameScreen implements Screen {
 
         batch.end();
 
-        // DEBUG VISUEL - zone visible de la caméra
-        debugRenderer.setProjectionMatrix(gameCamera.combined);
-        debugRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        debugRenderer.setColor(0.3f, 0.5f, 0.8f, 1); // Bleu ciel
-        float camLeft = gameCamera.position.x - Constants.GAME_WIDTH / 2;
-        float camBottom = gameCamera.position.y - Constants.GAME_HEIGHT / 2;
-        debugRenderer.rect(camLeft, camBottom, Constants.GAME_WIDTH, Constants.GAME_HEIGHT);
-        debugRenderer.end();
+
 
         batch.begin();
 
@@ -143,12 +133,6 @@ public class GameScreen implements Screen {
         gameCamera.position.x = targetX;
         gameCamera.position.y = Constants.GAME_HEIGHT / 2;
         gameCamera.update();
-
-        // DEBUG
-        System.out.println("Player: " + player.getPosition().x + " | Camera: " + gameCamera.position.x);
-        System.out.println("Zone visible: " +
-            (gameCamera.position.x - Constants.GAME_WIDTH/2) + " - " +
-            (gameCamera.position.x + Constants.GAME_WIDTH/2));
     }
 
     @Override
@@ -163,9 +147,6 @@ public class GameScreen implements Screen {
 
         // Mettre à jour la caméra UI
         uiCamera.setToOrtho(false, width, height);
-
-        System.out.println("Redimensionné: " + width + "x" + height);
-        System.out.println("Nouvelle échelle: " + scaleX + "x" + scaleY);
     }
 
     @Override

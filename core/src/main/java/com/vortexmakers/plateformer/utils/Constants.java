@@ -14,7 +14,7 @@ public class Constants {
     public static int SCREEN_HEIGHT = 720;
 
     // TAILLE DU MONDE (optionnel - pour les limites)
-    public static final int WORLD_WIDTH = 2500; // Monde plus large que la vue
+    public static final int WORLD_WIDTH = 3000; // Monde plus large que la vue
 
     // Physique
     public static final float GRAVITY = -900f;

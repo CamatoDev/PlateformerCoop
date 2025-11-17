@@ -98,9 +98,9 @@ public class Player implements GameEntity {
 
         // Limites de l'écran (temporaire)
         if (position.x < 0) position.x = 0;
-//        if (position.x > Constants.WORLD_WIDTH - Constants.PLAYER_WIDTH) {
-//            position.x = Constants.WORLD_WIDTH - Constants.PLAYER_WIDTH;
-//        }
+        if (position.x > Constants.WORLD_WIDTH - Constants.PLAYER_WIDTH) {
+            position.x = Constants.WORLD_WIDTH - Constants.PLAYER_WIDTH;
+        }
 
         // Sol (temporaire - sera remplacé par les plateformes)
         if (position.y < 0) {
