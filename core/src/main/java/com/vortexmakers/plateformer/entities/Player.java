@@ -36,19 +36,55 @@ public class Player implements GameEntity {
     }
 
     private void handleInput() {
-        // Déplacement horizontal simple
+        // Récupérer l'input horizontal
+        int horizontalInput = 0;
+
         if (Gdx.input.isKeyPressed(Input.Keys.RIGHT) || Gdx.input.isKeyPressed(Input.Keys.D)) {
-            velocity.x = Constants.PLAYER_SPEED;
-        } else if (Gdx.input.isKeyPressed(Input.Keys.LEFT) || Gdx.input.isKeyPressed(Input.Keys.A)) {
-            velocity.x = -Constants.PLAYER_SPEED;
-        } else {
-            velocity.x = 0;
+            horizontalInput += 1;
+        }
+        if (Gdx.input.isKeyPressed(Input.Keys.LEFT) || Gdx.input.isKeyPressed(Input.Keys.A)) {
+            horizontalInput -= 1;
         }
 
-        // Saut aussi avec Z ou UP (pour convenances)
-        if ((Gdx.input.isKeyJustPressed(Input.Keys.SPACE) || Gdx.input.isKeyJustPressed(Input.Keys.W) || Gdx.input.isKeyJustPressed(Input.Keys.UP)) && isGrounded) {
+        // Appliquer l'accélération/décélération
+        applyHorizontalMovement(horizontalInput, Gdx.graphics.getDeltaTime());
+
+        // Saut (inchangé)
+        if ((Gdx.input.isKeyJustPressed(Input.Keys.SPACE) ||
+            Gdx.input.isKeyJustPressed(Input.Keys.W) ||
+            Gdx.input.isKeyJustPressed(Input.Keys.UP)) &&
+            isGrounded) {
             velocity.y = Constants.JUMP_FORCE;
             isGrounded = false;
+        }
+    }
+
+    private void applyHorizontalMovement(int inputDirection, float deltaTime) {
+        float targetVelocity = inputDirection * Constants.MAX_PLAYER_SPEED;
+
+        // Facteur de contrôle (réduit en l'air)
+        float controlFactor = isGrounded ? 1.0f : Constants.AIR_CONTROL_FACTOR;
+
+        if (inputDirection != 0) {
+            // ACCÉLÉRATION
+            // On se rapproche de la vitesse cible
+            if (velocity.x < targetVelocity) {
+                velocity.x = Math.min(velocity.x + Constants.PLAYER_ACCELERATION * deltaTime * controlFactor, targetVelocity);
+            } else if (velocity.x > targetVelocity) {
+                velocity.x = Math.max(velocity.x - Constants.PLAYER_ACCELERATION * deltaTime * controlFactor, targetVelocity);
+            }
+        } else {
+            // DÉCÉLÉRATION (quand aucune touche n'est pressée)
+            if (velocity.x > 0) {
+                velocity.x = Math.max(velocity.x - Constants.PLAYER_DECELERATION * deltaTime, 0);
+            } else if (velocity.x < 0) {
+                velocity.x = Math.min(velocity.x + Constants.PLAYER_DECELERATION * deltaTime, 0);
+            }
+
+            // Arrêt complet si très proche de zéro
+            if (Math.abs(velocity.x) < 10f) {
+                velocity.x = 0;
+            }
         }
     }
 
@@ -62,14 +98,14 @@ public class Player implements GameEntity {
 
         // Limites de l'écran (temporaire)
         if (position.x < 0) position.x = 0;
-        if (position.x > Constants.VIEWPORT_WIDTH - Constants.PLAYER_WIDTH) {
-            position.x = Constants.VIEWPORT_WIDTH - Constants.PLAYER_WIDTH;
-        }
+//        if (position.x > Constants.WORLD_WIDTH - Constants.PLAYER_WIDTH) {
+//            position.x = Constants.WORLD_WIDTH - Constants.PLAYER_WIDTH;
+//        }
 
         // Sol (temporaire - sera remplacé par les plateformes)
         if (position.y < 0) {
-            position.y = 0;
-            velocity.y = 0;
+            //position.y = 0;
+            //velocity.y = 0;
             isGrounded = true;
         }
     }
