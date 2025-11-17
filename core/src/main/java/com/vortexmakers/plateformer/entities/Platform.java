@@ -28,6 +28,8 @@ public class Platform implements GameEntity {
     public void render(SpriteBatch batch) {
         batch.end(); // Temporairement
 
+        // Utiliser la même matrice de projection que le batch
+        debugRenderer.setProjectionMatrix(batch.getProjectionMatrix());
         debugRenderer.begin(ShapeRenderer.ShapeType.Filled);
         debugRenderer.setColor(0.2f, 0.8f, 0.2f, 1); // Vert
         debugRenderer.rect(bounds.x, bounds.y, bounds.width, bounds.height);

@@ -121,6 +121,8 @@ public class Player implements GameEntity {
 
         batch.end(); // Temporairement on stop le batch pour utiliser ShapeRenderer
 
+        // Utiliser la même matrice de projection que le batch
+        debugRenderer.setProjectionMatrix(batch.getProjectionMatrix());
         debugRenderer.begin(ShapeRenderer.ShapeType.Filled);
         debugRenderer.setColor(0.8f, 0.2f, 0.2f, 1); // Rouge
         debugRenderer.rect(position.x, position.y, Constants.PLAYER_WIDTH, Constants.PLAYER_HEIGHT);

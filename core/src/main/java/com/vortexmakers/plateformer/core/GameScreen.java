@@ -13,7 +13,8 @@ import com.vortexmakers.plateformer.utils.Constants;
 
 public class GameScreen implements Screen {
     private final PlateformerGame game;
-    private OrthographicCamera camera;
+    private OrthographicCamera gameCamera;  // Caméra pour la logique de jeu
+    private OrthographicCamera uiCamera;    // Caméra pour l'interface
     private SpriteBatch batch;
 
     private Player player;
@@ -21,52 +22,60 @@ public class GameScreen implements Screen {
     private PhysicsSystem physicsSystem;
     private ShapeRenderer debugRenderer;
 
+    // Échelle d'affichage
+    private float scaleX, scaleY;
+
     public GameScreen(PlateformerGame game) {
         this.game = game;
 
-        // Configuration caméra
-        camera = new OrthographicCamera();
-        camera.setToOrtho(false, Constants.VIEWPORT_WIDTH, Constants.VIEWPORT_HEIGHT);
-        // Position initiale de la caméra
-        camera.position.set(Constants.VIEWPORT_WIDTH / 2, Constants.VIEWPORT_HEIGHT / 2, 0);
-        camera.update();
+        // Initialiser les caméras
+        gameCamera = new OrthographicCamera();
+        gameCamera.setToOrtho(false, Constants.GAME_WIDTH, Constants.GAME_HEIGHT);
+        uiCamera = new OrthographicCamera();
+        uiCamera.setToOrtho(false, Constants.SCREEN_WIDTH, Constants.SCREEN_HEIGHT);
 
         batch = new SpriteBatch();
 
         debugRenderer = new ShapeRenderer();
 
         // Création des entités
-        player = new Player(100, 300);
+        player = new Player(50, 300);
         platforms = new Array<>();
         createTestLevel();
 
         physicsSystem = new PhysicsSystem();
 
-        System.out.println("=== INITIALISATION CAMÉRA ===");
-        System.out.println("Viewport: " + Constants.VIEWPORT_WIDTH + "x" + Constants.VIEWPORT_HEIGHT);
-        System.out.println("Position caméra: " + camera.position.x + ", " + camera.position.y);
+        System.out.println("=== INITIALISATION ===");
+        System.out.println("Échelle: " + scaleX + "x" + scaleY);
+        System.out.println("Jeu: " + Constants.GAME_WIDTH + "x" + Constants.GAME_HEIGHT);
+        System.out.println("Écran: " + Constants.SCREEN_WIDTH + "x" + Constants.SCREEN_HEIGHT);
     }
 
     private void createTestLevel() {
         // Plateforme de base (sol)
         //platforms.add(new Platform(0, 0, Constants.VIEWPORT_WIDTH));
         // Plateforme de base (sol)
-        platforms.add(new Platform(0, 0, 150));
-        platforms.add(new Platform(216, 0, 150));
-        platforms.add(new Platform(216 * 2, 0, 150));
-        platforms.add(new Platform(216 * 3, 0, 150));
-        platforms.add(new Platform(216 * 4, 0, 400));
+//        platforms.add(new Platform(0, 0, 150));
+//        platforms.add(new Platform(216, 0, 150));
+//        platforms.add(new Platform(216 * 2, 0, 150));
+//        platforms.add(new Platform(216 * 3, 0, 150));
+//        platforms.add(new Platform(216 * 4, 0, 400));
+
+        // SOL CONTINU
+        for (int i = 0; i < 15; i++) {
+            platforms.add(new Platform(i * 200, 0, 200));
+        }
 
         // Quelques plateformes de test
         platforms.add(new Platform(200, 80, 100));
-        platforms.add(new Platform(550, 140, 100));
+        platforms.add(new Platform(580, 150, 100));
         platforms.add(new Platform(100, 160, 85));
-        platforms.add(new Platform(700, 80, 120));
+        platforms.add(new Platform(720, 80, 120));
         platforms.add(new Platform(500, Constants.PLATFORM_HEIGHT, 50, 80));
 
         // Nouvelle plateforme loin à droite
         platforms.add(new Platform(1150, 80, 400));
-        platforms.add(new Platform(1400, 140, 100));
+        platforms.add(new Platform(1400, 160, 100));
         platforms.add(new Platform(1700, 160, 150));
 
         // Ajoutons encore plus de plateformes pour vraiment voir le défilement
@@ -83,18 +92,20 @@ public class GameScreen implements Screen {
         updateCamera();
 
         // Rendu
-        batch.setProjectionMatrix(camera.combined);
+        batch.setProjectionMatrix(gameCamera.combined);
         batch.begin();
 
-        // DEBUG : Fond coloré pour voir les limites
-        // Cette partie est temporaire pour le debug
         batch.end();
+
+        // DEBUG VISUEL - zone visible de la caméra
+        debugRenderer.setProjectionMatrix(gameCamera.combined);
         debugRenderer.begin(ShapeRenderer.ShapeType.Filled);
         debugRenderer.setColor(0.3f, 0.5f, 0.8f, 1); // Bleu ciel
-        debugRenderer.rect(camera.position.x - Constants.VIEWPORT_WIDTH/2,
-            camera.position.y - Constants.VIEWPORT_HEIGHT/2,
-            Constants.VIEWPORT_WIDTH, Constants.VIEWPORT_HEIGHT);
+        float camLeft = gameCamera.position.x - Constants.GAME_WIDTH / 2;
+        float camBottom = gameCamera.position.y - Constants.GAME_HEIGHT / 2;
+        debugRenderer.rect(camLeft, camBottom, Constants.GAME_WIDTH, Constants.GAME_HEIGHT);
         debugRenderer.end();
+
         batch.begin();
 
         // Dessiner les plateformes
@@ -107,6 +118,8 @@ public class GameScreen implements Screen {
 
         batch.end();
 
+
+
         // Mettre à jour la caméra
         updateCamera();
     }
@@ -117,90 +130,42 @@ public class GameScreen implements Screen {
     }
 
     private void updateCamera() {
-        // Position cible de la caméra
+        // SUIVI SIMPLE DU JOUEUR
         float targetX = player.getPosition().x + Constants.CAMERA_LEAD;
 
         // Limites de la caméra
-        float minCameraX = Constants.VIEWPORT_WIDTH / 2;
-        float maxCameraX = Constants.WORLD_WIDTH - Constants.VIEWPORT_WIDTH / 2;
+        float minCameraX = Constants.GAME_WIDTH / 2;
+        float maxCameraX = Constants.WORLD_WIDTH - Constants.GAME_WIDTH / 2;
 
         targetX = Math.max(minCameraX, Math.min(targetX, maxCameraX));
 
-        // Application directe (sans lissage pour debug)
-        camera.position.x = targetX;
-        camera.position.y = Constants.VIEWPORT_HEIGHT / 2;
-        camera.update();
+        // Application directe
+        gameCamera.position.x = targetX;
+        gameCamera.position.y = Constants.GAME_HEIGHT / 2;
+        gameCamera.update();
 
-        // DEBUG DÉTAILLÉ
-        System.out.println("=== CAMÉRA DEBUG ===");
-        System.out.println("Player: " + player.getPosition().x + ", " + player.getPosition().y);
-        System.out.println("Camera: " + camera.position.x + ", " + camera.position.y);
-        System.out.println("Viewport: " + camera.viewportWidth + "x" + camera.viewportHeight);
+        // DEBUG
+        System.out.println("Player: " + player.getPosition().x + " | Camera: " + gameCamera.position.x);
         System.out.println("Zone visible: " +
-            (camera.position.x - Constants.VIEWPORT_WIDTH/2) + " à " +
-            (camera.position.x + Constants.VIEWPORT_WIDTH/2));
+            (gameCamera.position.x - Constants.GAME_WIDTH/2) + " - " +
+            (gameCamera.position.x + Constants.GAME_WIDTH/2));
     }
-
-//    private void updateCamera() {
-//        // Position cible de la caméra (avec avance devant le joueur)
-//        float targetX = player.getPosition().x + Constants.CAMERA_LEAD;
-//
-//        // Limiter la caméra pour ne pas montrer du vide à gauche
-//        float minCameraX = Constants.VIEWPORT_WIDTH / 2;
-//        targetX = Math.max(targetX, minCameraX);
-//
-//        // CORRECTION : Ajouter une limite maximale si tu veux
-//        // float maxCameraX = Constants.WORLD_WIDTH - Constants.VIEWPORT_WIDTH / 2;
-//        // targetX = Math.min(targetX, maxCameraX);
-//
-//        // Lissage du mouvement de caméra (évite les saccades)
-//        float currentX = camera.position.x;
-//        float newX = currentX + (targetX - currentX) * Constants.CAMERA_SMOOTHNESS * Gdx.graphics.getDeltaTime();
-//
-//        // DEBUG TEMPORAIRE
-//        System.out.println("Player X: " + player.getPosition().x +
-//            " | Target X: " + targetX +
-//            " | Camera X: " + newX +
-//            " | Viewport: " + Constants.VIEWPORT_WIDTH + "x" + Constants.VIEWPORT_HEIGHT);
-//
-//        // Appliquer la nouvelle position
-//        camera.position.x = newX;
-//        camera.position.y = Constants.VIEWPORT_HEIGHT / 2; // CORRECTION : pas de cast float
-//        camera.update();
-//    }
-
 
     @Override
     public void resize(int width, int height) {
-        // APPROCHE SIMPLIFIÉE : Garder le viewport fixe
-        System.out.println("Resize: " + width + "x" + height);
+        // METTRE À JOUR LES CONSTANTES D'ÉCRAN
+        Constants.SCREEN_WIDTH = width;
+        Constants.SCREEN_HEIGHT = height;
 
-        // Calculer le ratio d'aspect
-        float aspectRatio = (float)width / height;
-        float desiredAspect = (float)Constants.VIEWPORT_WIDTH / Constants.VIEWPORT_HEIGHT;
+        // Recalculer l'échelle
+        scaleX = (float) width / Constants.GAME_WIDTH;
+        scaleY = (float) height / Constants.GAME_HEIGHT;
 
-        if (aspectRatio > desiredAspect) {
-            // Fenêtre plus large que le viewport
-            float newWidth = Constants.VIEWPORT_HEIGHT * aspectRatio;
-            camera.viewportWidth = newWidth;
-            camera.viewportHeight = Constants.VIEWPORT_HEIGHT;
-        } else {
-            // Fenêtre plus haute que le viewport
-            float newHeight = Constants.VIEWPORT_WIDTH / aspectRatio;
-            camera.viewportWidth = Constants.VIEWPORT_WIDTH;
-            camera.viewportHeight = newHeight;
-        }
+        // Mettre à jour la caméra UI
+        uiCamera.setToOrtho(false, width, height);
 
-        camera.update();
-        System.out.println("Nouveau viewport: " + camera.viewportWidth + "x" + camera.viewportHeight);
-
-//        float aspectRatio = (float) height / width;
-//        camera.viewportWidth = Constants.VIEWPORT_WIDTH * aspectRatio;
-//        camera.viewportHeight = Constants.VIEWPORT_HEIGHT * aspectRatio;
-//        camera.update();
-//
-//        System.out.println("Fenêtre redimensionnée: " + width + "x" + height);
-//        System.out.println("Viewport caméra: " + camera.viewportWidth + "x" + camera.viewportHeight);
+        System.out.println("Redimensionné: " + width + "x" + height);
+        System.out.println("Nouvelle échelle: " + scaleX + "x" + scaleY);
     }
 
     @Override

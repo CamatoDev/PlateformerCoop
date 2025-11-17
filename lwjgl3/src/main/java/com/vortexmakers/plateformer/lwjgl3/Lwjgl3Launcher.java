@@ -14,7 +14,7 @@ public class Lwjgl3Launcher {
         config.useVsync(true);
         config.setWindowedMode(1080, 720);
         config.setWindowIcon("libgdx128.png", "libgdx64.png", "libgdx32.png", "libgdx16.png");
-        //config.setResizable(false);
+        config.setResizable(true);
         new Lwjgl3Application(new PlateformerGame(), config);
     }
 }

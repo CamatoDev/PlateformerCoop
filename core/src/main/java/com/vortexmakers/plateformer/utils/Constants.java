@@ -2,9 +2,16 @@ package com.vortexmakers.plateformer.utils;
 
 
 public class Constants {
-    // TAILLE DE LA VUE (ce que la caméra voit)
-    public static final int VIEWPORT_WIDTH = 800;
-    public static final int VIEWPORT_HEIGHT = 480;
+    // ÉCHELLE DU MONDE vs ÉCHELLE AFFICHAGE
+    public static final float WORLD_TO_SCREEN = 1.0f; // 1 unité monde = 1 pixel écran
+
+    // RÉSOLUTION DE JEU FIXE (logique interne)
+    public static final int GAME_WIDTH = 800;
+    public static final int GAME_HEIGHT = 480;
+
+    // TAILLE RÉELLE DE LA FENÊTRE (ta résolution)
+    public static int SCREEN_WIDTH = 1080;
+    public static int SCREEN_HEIGHT = 720;
 
     // TAILLE DU MONDE (optionnel - pour les limites)
     public static final int WORLD_WIDTH = 2500; // Monde plus large que la vue
