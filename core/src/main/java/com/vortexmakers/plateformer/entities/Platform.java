@@ -1,22 +1,35 @@
 package com.vortexmakers.plateformer.entities;
 
 
+import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
-import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Rectangle;
 import com.vortexmakers.plateformer.utils.Constants;
+import com.vortexmakers.plateformer.utils.AssetManager;
 
 public class Platform implements GameEntity {
     private Rectangle bounds;
-    private ShapeRenderer debugRenderer;
+    private AssetManager assets;
+    private Texture platformTexture;
 
     public Platform(float x, float y, float width) {
         bounds = new Rectangle(x, y, width, Constants.PLATFORM_HEIGHT);
-        debugRenderer = new ShapeRenderer();
+        this.assets = AssetManager.getInstance();
+
+        // CHOIX DE LA TEXTURE
+        this.platformTexture = assets.getPlatformTerrain();
+
+        System.out.println("Platform créée avec texture: " + width + "x" + Constants.PLATFORM_HEIGHT);
     }
     public Platform(float x, float y, float width, float height) {
         bounds = new Rectangle(x, y, width, height);
-        debugRenderer = new ShapeRenderer();
+        this.assets = AssetManager.getInstance();
+
+        // CHOIX DE LA TEXTURE
+        this.platformTexture = assets.getPlatformBlock();
+
+        System.out.println("Platform créée avec texture: " + width + "x" + Constants.PLATFORM_HEIGHT);
+        //debugRenderer = new ShapeRenderer();
     }
 
     @Override
@@ -26,16 +39,30 @@ public class Platform implements GameEntity {
 
     @Override
     public void render(SpriteBatch batch) {
-        batch.end(); // Temporairement
+        // TAILLE D'UNE TUILE (64px art → 16px monde)
+        float tileSize = Constants.PLATFORM_HEIGHT; // 16px monde
+        float artToWorldScale = tileSize / 64f;     // 64px art → 16px monde
 
-        // Utiliser la même matrice de projection que le batch
-        debugRenderer.setProjectionMatrix(batch.getProjectionMatrix());
-        debugRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        debugRenderer.setColor(0.2f, 0.8f, 0.2f, 1); // Vert
-        debugRenderer.rect(bounds.x, bounds.y, bounds.width, bounds.height);
-        debugRenderer.end();
+        // NOMBRE DE TUILES NÉCESSAIRES
+        int tileCount = (int) Math.ceil(bounds.width / tileSize);
 
-        batch.begin();
+        // DESSINER CHAQUE TUILE
+        for (int i = 0; i < tileCount; i++) {
+            float x = bounds.x + (i * tileSize);
+            float width = Math.min(tileSize, bounds.x + bounds.width - x);
+
+            batch.draw(
+                platformTexture,
+                x,
+                bounds.y,
+                width,
+                bounds.height,
+                0, 0,                                  // Region X, Y
+                (int)(width / artToWorldScale),        // Region width (pixels art)
+                64,                                    // Region height (pixels art)
+                false, false                           // Flip X, Y
+            );
+        }
     }
 
     @Override
@@ -44,6 +71,6 @@ public class Platform implements GameEntity {
     }
 
     public void dispose() {
-        debugRenderer.dispose();
+
     }
 }

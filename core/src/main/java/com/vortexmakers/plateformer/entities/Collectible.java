@@ -1,15 +1,20 @@
 package com.vortexmakers.plateformer.entities;
 
 
+import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
+import com.vortexmakers.plateformer.utils.AssetManager;
+import com.vortexmakers.plateformer.utils.Constants;
 
 public class Collectible implements GameEntity {
     // POSITION ET GÉOMÉTRIE
     private Vector2 position;     // (coordonnées monde)
     private Rectangle bounds;
+    private AssetManager assets;
+    private Texture coinTexture;
 
     // ÉTATS
     private boolean collected;    // le collectible a été pris
@@ -17,16 +22,16 @@ public class Collectible implements GameEntity {
     private float animationTimer; // Compteur pour l'animation
 
     // VISUEL
-    private ShapeRenderer debugRenderer;
+    //private ShapeRenderer debugRenderer;
 
-    // CONSTANTES
-    private static final float SIZE = 24f;          // Taille du collectible
-    private static final float ANIMATION_DURATION = 0.3f; // Durée animation collecte
 
     public Collectible(float x, float y) {
         this.position = new Vector2(x, y);
-        this.bounds = new Rectangle(x, y, SIZE, SIZE);
-        debugRenderer = new ShapeRenderer();
+        this.bounds = new Rectangle(x, y, Constants.COLLECTIBLE_SIZE , Constants.COLLECTIBLE_SIZE );
+
+        this.assets = AssetManager.getInstance();
+        this.coinTexture = assets.getCoinTexture();
+
         this.collected = false;   // Pas encore collecté
         this.animating = false;   // Pas en animation
         this.animationTimer = 0f; // Timer à zéro
@@ -40,7 +45,7 @@ public class Collectible implements GameEntity {
             animationTimer += deltaTime;
 
             // Vérifier si l'animation est terminée
-            if (animationTimer >= ANIMATION_DURATION) {
+            if (animationTimer >= Constants.ANIMATION_DURATION) {
                 // Marquer comme complètement collecté
                 collected = true;
                 animating = false;
@@ -57,26 +62,42 @@ public class Collectible implements GameEntity {
 
         // Calculer l'échelle pour l'animation (si en cours d'animation)
         float scale = 1.0f;
+        float alpha = 1.0f;
         if (animating) {
             // Animation de "pop" : le collectible grossit puis disparaît
-            float progress = animationTimer / ANIMATION_DURATION;
+            float progress = animationTimer / Constants.ANIMATION_DURATION;
             scale = 1.0f + progress * 0.5f; // Grossit de 50%
+            alpha = 1.0f - progress;         // Disparition
         }
-        // Calculer la taille animée
-        float animatedSize = SIZE * scale;
 
-        // Calculer le décalage pour centrer l'animation
-        float offset = (animatedSize - SIZE) / 2;
+        // DESSIN AVEC ANIMATION
+        batch.setColor(1, 1, 1, alpha); // Appliquer alpha
 
-        batch.end();
-        debugRenderer.setProjectionMatrix(batch.getProjectionMatrix());
-        debugRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        // Alpha réduit pendant l'animation pour l'effet de disparition
-        float alpha = animating ? (1.0f - (animationTimer / ANIMATION_DURATION)) : 1.0f;
-        debugRenderer.setColor(1f, 1f, 0f, alpha); // Jaune pour les collectibles
-        debugRenderer.rect(position.x, position.y, animatedSize, animatedSize);
-        debugRenderer.end();
-        batch.begin();
+        batch.draw(
+            coinTexture,
+            position.x - (Constants.COLLECTIBLE_SIZE * (scale - 1)) / 2, // Centrer l'animation
+            position.y - (Constants.COLLECTIBLE_SIZE * (scale - 1)) / 2,
+            Constants.COLLECTIBLE_SIZE * scale + 24,
+            Constants.COLLECTIBLE_SIZE * scale + 24
+        );
+
+        batch.setColor(1, 1, 1, 1); // Réinitialiser alpha
+
+//        // Calculer la taille animée
+//        float animatedSize = Constants.COLLECTIBLE_SIZE  * scale;
+//
+//        // Calculer le décalage pour centrer l'animation
+//        float offset = (animatedSize - Constants.COLLECTIBLE_SIZE ) / 2;
+//
+//        batch.end();
+//        debugRenderer.setProjectionMatrix(batch.getProjectionMatrix());
+//        debugRenderer.begin(ShapeRenderer.ShapeType.Filled);
+//        // Alpha réduit pendant l'animation pour l'effet de disparition
+//        float alpha = animating ? (1.0f - (animationTimer / Constants.ANIMATION_DURATION)) : 1.0f;
+//        debugRenderer.setColor(1f, 1f, 0f, alpha); // Jaune pour les collectibles
+//        debugRenderer.rect(position.x, position.y, animatedSize, animatedSize);
+//        debugRenderer.end();
+//        batch.begin();
     }
 
 
@@ -114,6 +135,6 @@ public class Collectible implements GameEntity {
     }
 
     public void dispose() {
-        debugRenderer.dispose();
+
     }
 }

@@ -3,10 +3,12 @@ package com.vortexmakers.plateformer.entities;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
+import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
-import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
+import com.vortexmakers.plateformer.utils.AssetManager;
 import com.vortexmakers.plateformer.utils.Constants;
 
 public class Player implements GameEntity {
@@ -15,17 +17,32 @@ public class Player implements GameEntity {
     private Rectangle bounds;
     private boolean isGrounded;
 
-    // Pour le debug visuel (carré coloré)
-    private ShapeRenderer debugRenderer;
+    // TEXTURES ET ANIMATIONS
+    private Texture currentTexture;
+    private TextureRegion currentFrame;
+    private boolean facingRight = true; // Direction du personnage
+
+    // ANIMATION DE MARCHE
+    private float walkAnimationTimer = 0f;
+    private boolean isWalking = false;
+
+    // RÉFÉRENCE À L'ASSETMANAGER
+    private AssetManager assets;
 
     public Player(float startX, float startY) {
         position = new Vector2(startX, startY);
         velocity = new Vector2();
-        bounds = new Rectangle(position.x, position.y,
-            Constants.PLAYER_WIDTH, Constants.PLAYER_HEIGHT);
+        bounds = new Rectangle(position.x, position.y, Constants.PLAYER_WIDTH, Constants.PLAYER_HEIGHT);
         isGrounded = false;
 
-        debugRenderer = new ShapeRenderer();
+        // RÉCUPÉRATION DE L'ASSETMANAGER
+        this.assets = AssetManager.getInstance();
+
+        // TEXTURE INITIALE
+        this.currentTexture = assets.getPlayerIdle();
+        this.currentFrame = new TextureRegion(currentTexture);
+
+        System.out.println("Player créé avec textures");
     }
 
     @Override
@@ -33,6 +50,7 @@ public class Player implements GameEntity {
         handleInput();
         applyPhysics(deltaTime);
         updateBounds();
+        updateAnimation(deltaTime);
     }
 
     private void handleInput() {
@@ -114,21 +132,71 @@ public class Player implements GameEntity {
         bounds.setPosition(position);
     }
 
+    private void updateAnimation(float delta) {
+        // DÉTECTION DE L'ÉTAT
+        boolean wasWalking = isWalking;
+        isWalking = Math.abs(velocity.x) > 10f && isGrounded;
+        boolean isJumping = !isGrounded;
+
+        // CHANGEMENT DE TEXTURE SELON L'ÉTAT
+        if (isJumping) {
+            // ÉTAT : SAUT
+            currentTexture = assets.getPlayerJump();
+            currentFrame = new TextureRegion(currentTexture);
+        } else if (isWalking) {
+            // ÉTAT : MARCHE - ANIMATION
+            walkAnimationTimer += delta;
+
+            // Alterner entre walkA et walkB
+            if (walkAnimationTimer >= Constants.WALK_ANIMATION_SPEED) {
+                walkAnimationTimer = 0f;
+                // Alterner entre les deux frames de marche
+                if (currentTexture == assets.getPlayerWalkA()) {
+                    currentTexture = assets.getPlayerWalkB();
+                } else {
+                    currentTexture = assets.getPlayerWalkA();
+                }
+                currentFrame = new TextureRegion(currentTexture);
+            }
+        } else {
+            // ÉTAT : IDLE
+            currentTexture = assets.getPlayerIdle();
+            currentFrame = new TextureRegion(currentTexture);
+        }
+
+        // GESTION DE LA DIRECTION =======================
+        // Flip horizontal selon la direction du mouvement
+        if (velocity.x > 0) {
+            facingRight = true;
+        } else if (velocity.x < 0) {
+            facingRight = false;
+        }
+
+        // Appliquer le flip si nécessaire
+        if ((facingRight && currentFrame.isFlipX()) ||
+            (!facingRight && !currentFrame.isFlipX())) {
+            currentFrame.flip(true, false);
+        }
+    }
+
     @Override
     public void render(SpriteBatch batch) {
-        // Pour l'instant, on dessine un carré simple
-        // On utilise ShapeRenderer car c'est plus simple que les textures pour commencer
+        // Calcule de l'échelle : 128 pixels art → 32 pixels monde
+        float scale = Constants.PLAYER_WIDTH / 128f;
 
-        batch.end(); // Temporairement on stop le batch pour utiliser ShapeRenderer
-
-        // Utiliser la même matrice de projection que le batch
-        debugRenderer.setProjectionMatrix(batch.getProjectionMatrix());
-        debugRenderer.begin(ShapeRenderer.ShapeType.Filled);
-        debugRenderer.setColor(0.8f, 0.2f, 0.2f, 1); // Rouge
-        debugRenderer.rect(position.x, position.y, Constants.PLAYER_WIDTH, Constants.PLAYER_HEIGHT);
-        debugRenderer.end();
-
-        batch.begin(); // On reprend le batch
+        // Dessiner la texture avec la bonne échelle et direction
+        batch.draw(
+            currentFrame,                           // Texture à dessiner
+            position.x,                             // Position X monde
+            position.y,                             // Position Y monde
+            0,                                      // Origin X (0 = coin bas-gauche)
+            0,                                      // Origin Y
+            Constants.PLAYER_WIDTH + 128,                 // Largeur destination
+            Constants.PLAYER_HEIGHT + 128,                // Hauteur destination
+            scale,                                  // Échelle X
+            scale,                                  // Échelle Y
+            0                                       // Rotation
+        );
     }
 
     // Getters pour les collisions
@@ -158,6 +226,6 @@ public class Player implements GameEntity {
     }
 
     public void dispose() {
-        debugRenderer.dispose();
+
     }
 }
