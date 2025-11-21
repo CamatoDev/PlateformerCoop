@@ -13,7 +13,6 @@ public class Lwjgl3Launcher {
         config.setTitle("Plateformer Coop");
         config.useVsync(true);
         config.setWindowedMode(1080, 720);
-        //config.setWindowIcon("libgdx128.png", "libgdx64.png", "libgdx32.png", "libgdx16.png");
         config.setWindowIcon("Characters/Double/character_beige_front.png");
         config.setResizable(true);
         new Lwjgl3Application(new PlateformerGame(), config);

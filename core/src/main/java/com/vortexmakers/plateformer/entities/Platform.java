@@ -18,8 +18,6 @@ public class Platform implements GameEntity {
 
         // CHOIX DE LA TEXTURE
         this.platformTexture = assets.getPlatformTerrain();
-
-        System.out.println("Platform créée avec texture: " + width + "x" + Constants.PLATFORM_HEIGHT);
     }
     public Platform(float x, float y, float width, float height) {
         bounds = new Rectangle(x, y, width, height);
@@ -27,9 +25,6 @@ public class Platform implements GameEntity {
 
         // CHOIX DE LA TEXTURE
         this.platformTexture = assets.getPlatformBlock();
-
-        System.out.println("Platform créée avec texture: " + width + "x" + Constants.PLATFORM_HEIGHT);
-        //debugRenderer = new ShapeRenderer();
     }
 
     @Override

@@ -218,6 +218,7 @@ public class Player implements GameEntity {
     }
 
     public void setGrounded(boolean grounded) {
+
         isGrounded = grounded;
     }
 
@@ -227,5 +228,35 @@ public class Player implements GameEntity {
 
     public void dispose() {
 
+    }
+
+    // GETTERS ET SETTERS POUR LES JOUEURS DISTANTS
+
+    public void applySimpleGravity() {
+        // Utilise ta constante GRAVITY existante
+        if (!isGrounded) {
+            velocity.y += Constants.GRAVITY; // ou ta variable de gravité
+        }
+    }
+
+    public void setPosition(float x, float y) {
+        position.set(x, y);
+    }
+
+    public void setVelocity(float velX, float velY) {
+        velocity.set(velX, velY);
+    }
+
+    public boolean isJumping() {
+        // Adapte selon ta logique de saut
+        return velocity.y > 0 || !isGrounded;
+    }
+
+    public boolean isMovingLeft() {
+        return velocity.x < 0;
+    }
+
+    public boolean isMovingRight() {
+        return velocity.x > 0;
     }
 }

@@ -12,14 +12,33 @@ import com.vortexmakers.plateformer.entities.Platform;
 import com.vortexmakers.plateformer.systems.PhysicsSystem;
 import com.vortexmakers.plateformer.utils.Constants;
 import com.vortexmakers.plateformer.utils.AssetManager;
+import com.vortexmakers.plateformer.network.NetworkManager;
+import com.vortexmakers.plateformer.network.listeners.NetworkListener;
+import com.vortexmakers.plateformer.network.messages.*;
 
-public class GameScreen implements Screen {
+import java.util.HashMap;
+import java.util.Map;
+
+public class GameScreen implements Screen, NetworkListener {
     private final PlateformerGame game;
     private OrthographicCamera gameCamera;  // Caméra pour la logique de jeu
     private OrthographicCamera uiCamera;    // Caméra pour l'interface
     private SpriteBatch batch;
 
-    private Player player;
+    // SYSTÈME MULTIJOUEUR
+    private NetworkManager networkManager;
+
+    // JOUEURS
+    private Player localPlayer;  // Notre joueur local
+    private Map<Integer, Player> remotePlayers;  // Joueurs distants
+
+    // Données du joueur local
+    private int localPlayerId = -1;
+
+    // TIMING RÉSEAU
+    private float networkUpdateTimer = 0f;
+
+    //private Player player;
     // Score du joueur
     private int playerScore;
 
@@ -36,7 +55,6 @@ public class GameScreen implements Screen {
 
     // Textures de background
     private Texture backgroundSky;
-    private Texture backgroundHills;
     private Texture backgroundTrees;
     private Texture backgroundClouds;
 
@@ -44,14 +62,21 @@ public class GameScreen implements Screen {
     private float cloudOffset = 0;
     private float treesOffset = 0f;
 
-    public GameScreen(PlateformerGame game) {
+    public GameScreen(PlateformerGame game, NetworkManager networkManager) {
+        System.out.println("🎮 CREATION GameScreen - ID: " + networkManager.getLocalPlayerId());
         this.game = game;
+        this.networkManager = networkManager;
+        this.networkManager.setNetworkListener(this);
+
+        // RÉCUPÉRER NOTRE ID DE JOUEUR
+        this.localPlayerId = networkManager.getLocalPlayerId();
+
+        // INITIALISATION DES JOUEURS
+        this.remotePlayers = new HashMap<>();
 
         // INITIALISATION ASSETMANAGER
         this.assets = AssetManager.getInstance();
         assets.loadAssets(); // CHARGEMENT DES ASSETS (IMPORTANT)
-
-
 
         // Initialiser les caméras
         gameCamera = new OrthographicCamera();
@@ -63,12 +88,12 @@ public class GameScreen implements Screen {
 
         // Récuperation de textures du background
         this.backgroundSky = assets.getBackgroundSky();
-        this.backgroundHills = assets.getBackgroundHills();
         this.backgroundTrees = assets.getBackgroundTrees();
         this.backgroundClouds = assets.getBackgroundClouds();
 
         // Création des entités
-        player = new Player(50, 300);
+        localPlayer = new Player(50, 300);  // CRÉATION DU JOUEUR LOCAL
+        //player = new Player(50, 300);
         platforms = new Array<>();
         collectibles = new Array<>();
 
@@ -152,8 +177,7 @@ public class GameScreen implements Screen {
             collectible.render(batch);
         }
 
-        // Dessiner le joueur
-        player.render(batch);
+        renderPlayers();
 
         batch.end();
 
@@ -177,20 +201,55 @@ public class GameScreen implements Screen {
     }
 
     private void update(float delta) {
-        player.update(delta);
-        // Pour les collisions avec les platform
-        physicsSystem.checkCollisions(player, platforms);
-        // Pour les collisions avec les collectibles
-        int collectedThisFrame = physicsSystem.checkCollectibleCollisions(player, collectibles);
+        localPlayer.update(delta);
+        // Pour les collisions avec les platform et le joueur local
+        physicsSystem.checkCollisions(localPlayer, platforms);
+        // Pour les collisions avec les collectibles et le joueur local
+        int collectedThisFrame = physicsSystem.checkCollectibleCollisions(localPlayer, collectibles);
         if (collectedThisFrame > 0) {
             playerScore += collectedThisFrame;
             System.out.println("Score: " + playerScore + " (+" + collectedThisFrame + ")");
+        }
+
+        // METTRE À JOUR LES JOUEURS DISTANTS ===========
+        updateRemotePlayers(delta);
+
+        // ENVOYER LES INPUTS AU SERVEUR ================
+        sendNetworkUpdates(delta);
+    }
+
+    private void updateRemotePlayers(float delta) {
+        for (Player remotePlayer : remotePlayers.values()) {
+            remotePlayer.update(delta);
+
+            // Appliquer une physique basique aux joueurs distants
+            remotePlayer.applySimpleGravity();
+        }
+    }
+
+    private void sendNetworkUpdates(float delta) {
+        networkUpdateTimer += delta;
+
+        if (networkUpdateTimer >= Constants.NETWORK_UPDATE_INTERVAL) {
+            networkUpdateTimer = 0f;
+
+            // ENVOYER LES INPUTS DU JOUEUR LOCAL =======
+            if (networkManager.isConnected()) {
+                networkManager.sendPlayerInput(
+                    localPlayer.getVelocity().x,
+                    localPlayer.isJumping(),
+                    localPlayer.isMovingLeft(),
+                    localPlayer.isMovingRight(),
+                    localPlayer.getPosition().x,
+                    localPlayer.getPosition().y
+                );
+            }
         }
     }
 
     private void updateCamera() {
         // SUIVI SIMPLE DU JOUEUR
-        float targetX = player.getPosition().x + Constants.CAMERA_LEAD;
+        float targetX = localPlayer.getPosition().x + Constants.CAMERA_LEAD;
 
         // Limites de la caméra
         float minCameraX = Constants.GAME_WIDTH / 2;
@@ -302,7 +361,6 @@ public class GameScreen implements Screen {
         float visibleWidth = screenRight - screenLeft;
 
         // CALCULER LA POSITION SANS DÉFILEMENT PARALLAXE + ANIMATION
-        //float parallaxCloudsX = screenLeft * 0.5f; // Défilement moyen (50% de la caméra)
         float adjustedCloudsX = cloudOffset; // + parallaxCloudsX si on veut un défilement
 
         // NOMBRE DE TUILES NÉCESSAIRES
@@ -342,6 +400,97 @@ public class GameScreen implements Screen {
         }
     }
 
+    private void renderPlayers() {
+        // DESSINER LE JOUEUR LOCAL
+        localPlayer.render(batch);
+
+        // DESSINER LES JOUEURS DISTANTS
+        for (Player remotePlayer : remotePlayers.values()) {
+            remotePlayer.render(batch);
+        }
+    }
+
+    @Override
+    public void onPlayerJoined(PlayerJoinMessage message) {
+        Gdx.app.postRunnable(() -> {
+            System.out.println("Joueur rejoint: " + message.playerName + " (ID: " + message.playerId + ")");
+
+            // Ne pas créer de joueur pour nous-même
+            if (message.playerId == localPlayerId) {
+                return;
+            }
+
+            // Créer un nouveau joueur distant
+            Player remotePlayer = new Player(message.startX, message.startY);
+            remotePlayers.put(message.playerId, remotePlayer);
+
+            System.out.println("Nombre de joueurs distants: " + remotePlayers.size());
+        });
+    }
+
+    @Override
+    public void onPlayerLeft(PlayerLeaveMessage message) {
+        Gdx.app.postRunnable(() -> {
+            System.out.println("👋 Joueur parti: " + message.playerId);
+
+            // Supprimer le joueur distant
+            remotePlayers.remove(message.playerId);
+
+            System.out.println("Nombre de joueurs distants: " + remotePlayers.size());
+        });
+    }
+
+    @Override
+    public void onGameStateReceived(GameStateMessage message) {
+        Gdx.app.postRunnable(() -> {
+            // Mettre à jour tous les joueurs distants
+            for (Map.Entry<Integer, GameStateMessage.PlayerData> entry : message.playerStates.entrySet()) {
+                int playerId = entry.getKey();
+                GameStateMessage.PlayerData playerData = entry.getValue();
+
+                // Ignorer notre propre joueur
+                if (playerId == localPlayerId) {
+                    continue;
+                }
+
+                // Mettre à jour le joueur distant
+                Player remotePlayer = remotePlayers.get(playerId);
+                if (remotePlayer != null) {
+                    // INTERPOLATION SIMPLE DES POSITIONS
+                    remotePlayer.setPosition(playerData.x, playerData.y);
+                    remotePlayer.setVelocity(playerData.velocityX, playerData.velocityY);
+                    remotePlayer.setGrounded(playerData.isGrounded);
+                }
+            }
+        });
+    }
+
+    @Override
+    public void onConnectedToServer() {
+        // Connexion établie - pas d'action nécessaire ici
+    }
+
+    @Override
+    public void onDisconnectedFromServer() {
+        Gdx.app.postRunnable(() -> {
+            System.out.println("Déconnecté du serveur, retour au menu");
+            // Nettoyer les joueurs distants
+            remotePlayers.clear();
+
+            // Retourner au menu principal
+            game.setScreen(new LobbyScreen(game));
+        });
+    }
+
+    @Override
+    public void onConnectionFailed(String reason) {
+        Gdx.app.postRunnable(() -> {
+            System.out.println("Échec connexion: " + reason);
+            // Retour au menu en cas d'erreur
+            game.setScreen(new LobbyScreen(game));
+        });
+    }
+
     @Override
     public void resize(int width, int height) {
         // METTRE À JOUR LES CONSTANTES D'ÉCRAN
@@ -358,7 +507,7 @@ public class GameScreen implements Screen {
 
     @Override
     public void show() {
-        System.out.println("GameScreen show()");
+        System.out.println("🎮 GameScreen SHOW() - Connecté: " + networkManager.isConnected());
     }
 
     @Override
@@ -378,8 +527,16 @@ public class GameScreen implements Screen {
 
     @Override
     public void dispose() {
+        // Nettoyage des ressources
         batch.dispose();
-        player.dispose();
+        localPlayer.dispose();
+
+        // Nettoyer les joueurs distants
+        for (Player remotePlayer : remotePlayers.values()) {
+            remotePlayer.dispose();
+        }
+        remotePlayers.clear();
+
         for (Platform platform : platforms) {
             platform.dispose();
         }
@@ -387,5 +544,10 @@ public class GameScreen implements Screen {
             collectible.dispose();
         }
         assets.dispose();
+
+        // Fermer la connexion réseau
+        if (networkManager != null) {
+            networkManager.disconnect();
+        }
     }
 }

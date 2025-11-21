@@ -43,4 +43,6 @@ public class Constants {
     // Caméra
     public static final float CAMERA_LEAD = 200f; // Avance de la caméra
     public static final float CAMERA_SMOOTHNESS = 5f; // Lissage du mouvement
+
+    public static final float NETWORK_UPDATE_INTERVAL = 1f / 20f; // 20 fois par seconde
 }

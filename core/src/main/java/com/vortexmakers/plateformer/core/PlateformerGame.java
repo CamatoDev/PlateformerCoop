@@ -6,6 +6,7 @@ package com.vortexmakers.plateformer.core;
 
 import com.badlogic.gdx.Game;
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.GL20;
 
 public class PlateformerGame extends Game {
@@ -13,7 +14,7 @@ public class PlateformerGame extends Game {
     @Override
     public void create() {
         // Pas besoin d'assets pour l'instant, on utilise des formes simples
-        setScreen(new GameScreen(this));
+        setScreen(new LobbyScreen(this));
     }
 
     @Override
@@ -23,5 +24,12 @@ public class PlateformerGame extends Game {
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
         super.render();
+    }
+
+    public void setScreen(Screen screen) {
+        System.out.println("Changement d'écran: " + screen.getClass().getSimpleName());
+
+        // Appel standard de LibGDX
+        super.setScreen(screen);
     }
 }
