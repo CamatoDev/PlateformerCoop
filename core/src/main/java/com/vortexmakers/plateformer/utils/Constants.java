@@ -27,7 +27,7 @@ public class Constants {
     public static final float JUMP_FORCE = 400f;
     public static final float PLAYER_ACCELERATION = 800f;
     public static final float PLAYER_DECELERATION = 600f;
-    public static final float MAX_PLAYER_SPEED = 250f;
+    public static final float MAX_PLAYER_SPEED = 200f;
     public static final float WALK_ANIMATION_SPEED = 0.15f; // Secondes entre chaque frame
     public static final float AIR_CONTROL_FACTOR = 0.6f; // Contrôle réduit en l'air
 

@@ -3,7 +3,6 @@ package com.vortexmakers.plateformer.entities;
 
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
-import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import com.vortexmakers.plateformer.utils.AssetManager;
@@ -82,22 +81,6 @@ public class Collectible implements GameEntity {
         );
 
         batch.setColor(1, 1, 1, 1); // Réinitialiser alpha
-
-//        // Calculer la taille animée
-//        float animatedSize = Constants.COLLECTIBLE_SIZE  * scale;
-//
-//        // Calculer le décalage pour centrer l'animation
-//        float offset = (animatedSize - Constants.COLLECTIBLE_SIZE ) / 2;
-//
-//        batch.end();
-//        debugRenderer.setProjectionMatrix(batch.getProjectionMatrix());
-//        debugRenderer.begin(ShapeRenderer.ShapeType.Filled);
-//        // Alpha réduit pendant l'animation pour l'effet de disparition
-//        float alpha = animating ? (1.0f - (animationTimer / Constants.ANIMATION_DURATION)) : 1.0f;
-//        debugRenderer.setColor(1f, 1f, 0f, alpha); // Jaune pour les collectibles
-//        debugRenderer.rect(position.x, position.y, animatedSize, animatedSize);
-//        debugRenderer.end();
-//        batch.begin();
     }
 
 

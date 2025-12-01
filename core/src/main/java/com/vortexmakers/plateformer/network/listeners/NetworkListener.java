@@ -1,10 +1,7 @@
 package com.vortexmakers.plateformer.network.listeners;
 
 
-import com.vortexmakers.plateformer.network.messages.GameStateMessage;
-import com.vortexmakers.plateformer.network.messages.PlayerJoinMessage;
-import com.vortexmakers.plateformer.network.messages.PlayerLeaveMessage;
-
+import com.vortexmakers.plateformer.network.messages.*;
 /**
  * INTERFACE POUR ÉCOUTER LES ÉVÉNEMENTS RÉSEAU
  *
@@ -15,6 +12,8 @@ public interface NetworkListener {
     void onPlayerJoined(PlayerJoinMessage message);
     void onPlayerLeft(PlayerLeaveMessage message);
     void onGameStateReceived(GameStateMessage message);
+    void onPlatformStateReceived(PlatformStateMessage message); // ✅ AJOUT
+    void onCollectibleStateReceived(CollectibleStateMessage message); // AJOUT
     void onConnectedToServer();
     void onDisconnectedFromServer();
     void onConnectionFailed(String reason);

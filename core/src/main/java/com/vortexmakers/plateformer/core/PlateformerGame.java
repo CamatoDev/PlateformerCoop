@@ -8,28 +8,34 @@ import com.badlogic.gdx.Game;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.GL20;
+import com.vortexmakers.plateformer.network.NetworkManager;
 
 public class PlateformerGame extends Game {
+    // ✅ RÉFÉRENCE AU SINGLETON
+    private NetworkManager networkManager;
 
     @Override
     public void create() {
-        // Pas besoin d'assets pour l'instant, on utilise des formes simples
+        // ✅ INITIALISATION DU SINGLETON
+        networkManager = NetworkManager.getInstance();
         setScreen(new LobbyScreen(this));
     }
 
     @Override
     public void render() {
-        // Fond d'écran bleu ciel
-        Gdx.gl.glClearColor(0.5f, 0.7f, 1f, 1);
-        Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
-
         super.render();
+
+        // ✅ TOUJOURS DISPONIBLE
+        if (networkManager != null) {
+            networkManager.updateServer(Gdx.graphics.getDeltaTime());
+        }
     }
 
-    public void setScreen(Screen screen) {
-        System.out.println("Changement d'écran: " + screen.getClass().getSimpleName());
-
-        // Appel standard de LibGDX
-        super.setScreen(screen);
+    @Override
+    public void dispose() {
+        // ✅ NETTOYAGE GLOBAL
+        if (networkManager != null) {
+            NetworkManager.resetInstance(); // Ou networkManager.disconnect()
+        }
     }
 }

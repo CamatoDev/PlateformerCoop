@@ -1,6 +1,7 @@
 package com.vortexmakers.plateformer.core;
 
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.Input;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.Texture;
@@ -17,6 +18,7 @@ import com.vortexmakers.plateformer.network.listeners.NetworkListener;
 import com.vortexmakers.plateformer.network.messages.*;
 
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 
 public class GameScreen implements Screen, NetworkListener {
@@ -42,8 +44,19 @@ public class GameScreen implements Screen, NetworkListener {
     // Score du joueur
     private int playerScore;
 
-    private Array<Platform> platforms;
-    private Array<Collectible> collectibles;
+    //private Array<Platform> platforms;
+//    private Array<Collectible> collectibles;
+
+    // ✅ MODIFICATION: Utiliser Map pour les plateformes
+    private Map<Integer, Platform> clientPlatforms;
+    private int nextPlatformId = 0;
+
+    // COLLECTIBLES CLIENT ==============================
+    private Map<Integer, Collectible> clientCollectibles;
+
+    // SÉQUENCE D'INPUT POUR LA RÉCONCILIATION
+    private int inputSequence = 0;
+    private static final int MAX_SEQUENCE = 1000000; // Éviter les débordements
 
     private PhysicsSystem physicsSystem;
 
@@ -65,7 +78,8 @@ public class GameScreen implements Screen, NetworkListener {
     public GameScreen(PlateformerGame game, NetworkManager networkManager) {
         System.out.println("🎮 CREATION GameScreen - ID: " + networkManager.getLocalPlayerId());
         this.game = game;
-        this.networkManager = networkManager;
+        // ✅ UTILISATION DU SINGLETON
+        this.networkManager = NetworkManager.getInstance();
         this.networkManager.setNetworkListener(this);
 
         // RÉCUPÉRER NOTRE ID DE JOUEUR
@@ -92,66 +106,25 @@ public class GameScreen implements Screen, NetworkListener {
         this.backgroundClouds = assets.getBackgroundClouds();
 
         // Création des entités
-        localPlayer = new Player(50, 300);  // CRÉATION DU JOUEUR LOCAL
-        //player = new Player(50, 300);
-        platforms = new Array<>();
-        collectibles = new Array<>();
+        localPlayer = new Player(50, Constants.PLATFORM_HEIGHT);  // CRÉATION DU JOUEUR LOCAL
+        // ✅ MODIFICATION: Initialiser la Map
+        this.clientPlatforms = new HashMap<>();
+        this.clientCollectibles = new HashMap<>();
 
         playerScore = 0;
 
-         // Création des éléments du niveau
-        createTestLevel();
-        createCollectibles();
         physicsSystem = new PhysicsSystem();
-    }
-
-    private void createTestLevel() {
-        // Plateforme de base (sol)
-        for (int i = 0; i < 15; i++) {
-            platforms.add(new Platform(i * 200, 0, 200)); // ou width: 150
-        }
-
-        // Quelques plateformes de test
-        platforms.add(new Platform(200, 80, 100));
-        platforms.add(new Platform(580, 150, 100));
-        platforms.add(new Platform(100, 160, 85));
-        platforms.add(new Platform(720, 80, 120));
-        platforms.add(new Platform(500, Constants.PLATFORM_HEIGHT, 32, 80));
-
-        // Nouvelle plateforme loin à droite
-        platforms.add(new Platform(1150, 80, 400));
-        platforms.add(new Platform(1400, 160, 100));
-        platforms.add(new Platform(1700, 160, 150));
-
-        // Ajoutons encore plus de plateformes pour vraiment voir le défilement
-        platforms.add(new Platform(2000, 200, 200));
-        platforms.add(new Platform(2300, 100, 150));
-        platforms.add(new Platform(2600, 150, 120));
-        platforms.add(new Platform(2900, 80, 200));
-    }
-
-    private void createCollectibles() {
-        // COLLECTIBLES SUR LES PLATEFORMES PRINCIPALES
-
-        // Plateformes basses (faciles)
-        collectibles.add(new Collectible(250, 120));   // Sur plateforme à 200,80
-        collectibles.add(new Collectible(600, 180));   // Sur plateforme à 550,140
-        collectibles.add(new Collectible(780, 100));   // Sur plateforme à 720,80
-
-        // Plateformes hautes (plus difficiles)
-        collectibles.add(new Collectible(1200, 220));  // Sur plateforme à 1150,200
-        collectibles.add(new Collectible(1700, 220));  // Sur plateforme à 1700,160
-        collectibles.add(new Collectible(2050, 250));  // Sur plateforme à 2100,200
-
-        // Collectibles nécessitant des sauts précis
-        collectibles.add(new Collectible(400, 250));   // Haut de la plateforme à 400,150
-        collectibles.add(new Collectible(1400, 210));  // Haut de la plateforme à 1400,160
-
-        System.out.println("Création de " + collectibles.size + " collectibles");
     }
 
     @Override
     public void render(float delta) {
+        // ✅ CORRECTION: Vérifier si on est toujours connecté
+        if (!networkManager.isConnected()) {
+            System.out.println("⚠️ Plus connecté au serveur, retour au menu...");
+            game.setScreen(new LobbyScreen(game));
+            return;
+        }
+
         updateBackground(delta);
 
         // Mise à jour
@@ -167,15 +140,10 @@ public class GameScreen implements Screen, NetworkListener {
         // DESSIN DU BACKGROUND
         renderBackground();
 
-        // Dessiner les plateformes
-        for (Platform platform : platforms) {
-            platform.render(batch);
-        }
+        // ✅ MODIFICATION: Dessiner les plateformes depuis la Map
+        renderPlatforms();
 
-        // Dessiner les COLLECTIBLES
-        for (Collectible collectible : collectibles) {
-            collectible.render(batch);
-        }
+        renderCollectibles();
 
         renderPlayers();
 
@@ -200,48 +168,52 @@ public class GameScreen implements Screen, NetworkListener {
         }
     }
 
+    /**
+     * METTRE À JOUR LE JOUEUR LOCAL (inputs seulement)
+     */
     private void update(float delta) {
-        localPlayer.update(delta);
-        // Pour les collisions avec les platform et le joueur local
-        physicsSystem.checkCollisions(localPlayer, platforms);
-        // Pour les collisions avec les collectibles et le joueur local
-        int collectedThisFrame = physicsSystem.checkCollectibleCollisions(localPlayer, collectibles);
-        if (collectedThisFrame > 0) {
-            playerScore += collectedThisFrame;
-            System.out.println("Score: " + playerScore + " (+" + collectedThisFrame + ")");
-        }
+        // ✅ CORRECTION: Mettre à jour l'animation même sans physique locale
+        localPlayer.updateAnimation(delta);
 
-        // METTRE À JOUR LES JOUEURS DISTANTS ===========
-        updateRemotePlayers(delta);
-
-        // ENVOYER LES INPUTS AU SERVEUR ================
+        // ✅ CORRECTION: Envoyer les inputs même si on ne fait pas la physique locale
         sendNetworkUpdates(delta);
+
+        // ✅ CORRECTION: Mettre à jour les joueurs distants
+        updateRemotePlayers(delta);
     }
 
     private void updateRemotePlayers(float delta) {
         for (Player remotePlayer : remotePlayers.values()) {
-            remotePlayer.update(delta);
-
-            // Appliquer une physique basique aux joueurs distants
-            remotePlayer.applySimpleGravity();
+            remotePlayer.updateAnimation(delta);
         }
     }
 
+    /**
+     * ENVOYER LES INPUTS BRUTS AU SERVEUR
+     */
     private void sendNetworkUpdates(float delta) {
         networkUpdateTimer += delta;
 
         if (networkUpdateTimer >= Constants.NETWORK_UPDATE_INTERVAL) {
             networkUpdateTimer = 0f;
 
-            // ENVOYER LES INPUTS DU JOUEUR LOCAL =======
             if (networkManager.isConnected()) {
+                // RÉCUPÉRER LES INPUTS BRUTS
+                boolean leftPressed = Gdx.input.isKeyPressed(Input.Keys.LEFT) || Gdx.input.isKeyPressed(Input.Keys.A);
+                boolean rightPressed = Gdx.input.isKeyPressed(Input.Keys.RIGHT) || Gdx.input.isKeyPressed(Input.Keys.D);
+                boolean jumpPressed = Gdx.input.isKeyJustPressed(Input.Keys.SPACE) ||
+                    Gdx.input.isKeyJustPressed(Input.Keys.W) ||
+                    Gdx.input.isKeyJustPressed(Input.Keys.UP);
+
+                // ✅ CORRECTION AVEC GESTION DE DÉBORDEMENT
+                int currentSequence = inputSequence;
+                inputSequence = (inputSequence + 1) % MAX_SEQUENCE;
+
                 networkManager.sendPlayerInput(
-                    localPlayer.getVelocity().x,
-                    localPlayer.isJumping(),
-                    localPlayer.isMovingLeft(),
-                    localPlayer.isMovingRight(),
-                    localPlayer.getPosition().x,
-                    localPlayer.getPosition().y
+                    leftPressed,
+                    rightPressed,
+                    jumpPressed,
+                    currentSequence  // ✅ Utiliser la séquence actuelle
                 );
             }
         }
@@ -385,17 +357,19 @@ public class GameScreen implements Screen, NetworkListener {
     }
 
     private void updateCollectibles() {
-        // Mettre à jour chaque collectible
-        for (Collectible collectible : collectibles) {
-            collectible.update(Gdx.graphics.getDeltaTime());
-        }
+        // ✅ SUPPRESSION IMMÉDIATE des collectibles complètement collectés
+        Iterator<Map.Entry<Integer, Collectible>> iterator = clientCollectibles.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<Integer, Collectible> entry = iterator.next();
+            Collectible collectible = entry.getValue();
 
-        // Supprimer les collectibles complètement collectés
-        for (int i = collectibles.size - 1; i >= 0; i--) {
-            if (collectibles.get(i).isFullyCollected()) {
-                Collectible removed = collectibles.removeIndex(i);
-                removed.dispose();
-                System.out.println("Collectible supprimé, score: " + playerScore);
+            collectible.update(Gdx.graphics.getDeltaTime());
+
+            // ✅ SUPPRIMER dès que l'animation est terminée
+            if (collectible.isFullyCollected()) {
+                collectible.dispose();
+                iterator.remove();
+                System.out.println("🗑️ Collectible supprimé côté client");
             }
         }
     }
@@ -440,29 +414,105 @@ public class GameScreen implements Screen, NetworkListener {
         });
     }
 
+    /**
+     * RÉCEPTION DE L'ÉTAT DU JEU DU SERVEUR - Version corrigée
+     */
     @Override
     public void onGameStateReceived(GameStateMessage message) {
         Gdx.app.postRunnable(() -> {
-            // Mettre à jour tous les joueurs distants
             for (Map.Entry<Integer, GameStateMessage.PlayerData> entry : message.playerStates.entrySet()) {
                 int playerId = entry.getKey();
                 GameStateMessage.PlayerData playerData = entry.getValue();
 
-                // Ignorer notre propre joueur
                 if (playerId == localPlayerId) {
-                    continue;
-                }
+                    // ✅ FORCER la mise à jour de l'état grounded pour l'animation
+                    localPlayer.setGrounded(playerData.isGrounded);
+                    localPlayer.setPosition(playerData.x, playerData.y);
+                    localPlayer.setVelocity(playerData.velocityX, playerData.velocityY);
 
-                // Mettre à jour le joueur distant
-                Player remotePlayer = remotePlayers.get(playerId);
-                if (remotePlayer != null) {
-                    // INTERPOLATION SIMPLE DES POSITIONS
-                    remotePlayer.setPosition(playerData.x, playerData.y);
-                    remotePlayer.setVelocity(playerData.velocityX, playerData.velocityY);
-                    remotePlayer.setGrounded(playerData.isGrounded);
+                    // ✅ DEBUG: Vérifier l'état reçu
+                    if (playerData.isGrounded) {
+                        System.out.println("🟢 Client: Joueur local au sol");
+                    } else {
+                        System.out.println("🔴 Client: Joueur local en l'air");
+                    }
+                } else {
+                    Player remotePlayer = remotePlayers.get(playerId);
+                    if (remotePlayer != null) {
+                        remotePlayer.setGrounded(playerData.isGrounded);
+                        remotePlayer.setPosition(playerData.x, playerData.y);
+                        remotePlayer.setVelocity(playerData.velocityX, playerData.velocityY);
+                    }
                 }
             }
         });
+    }
+
+    @Override
+    public void onPlatformStateReceived(PlatformStateMessage message) {
+        Gdx.app.postRunnable(() -> {
+            //System.out.println("📦 CLIENT: Réception " + message.platforms.size() + " plateformes");
+
+            clientPlatforms.clear();
+
+            for (int i = 0; i < message.platforms.size(); i++) {
+                PlatformStateMessage.PlatformData platformData = message.platforms.get(i);
+                Platform platform;
+
+                if (platformData.height == Constants.PLATFORM_HEIGHT) {
+                    platform = new Platform(platformData.x, platformData.y, platformData.width);
+                } else {
+                    platform = new Platform(platformData.x, platformData.y, platformData.width, platformData.height);
+                }
+
+                clientPlatforms.put(i, platform);
+            }
+
+            //System.out.println("✅ " + clientPlatforms.size() + " plateformes créées côté client");
+        });
+    }
+
+    /**
+     * RÉCEPTION DE L'ÉTAT DES COLLECTIBLES DU SERVEUR
+     */
+    @Override
+    public void onCollectibleStateReceived(CollectibleStateMessage message) {
+        Gdx.app.postRunnable(() -> {
+            for (CollectibleStateMessage.CollectibleData collectibleData : message.collectibles) {
+                Collectible collectible = clientCollectibles.get(collectibleData.collectibleId);
+
+                if (collectible == null && !collectibleData.collected) {
+                    // CRÉATION si pas encore collecté
+                    collectible = new Collectible(collectibleData.x, collectibleData.y);
+                    clientCollectibles.put(collectibleData.collectibleId, collectible);
+                }
+
+                if (collectible != null && collectibleData.collected) {
+                    // ✅ FORCER la collecte immédiate
+                    if (!collectible.isFullyCollected() && !collectible.isCollecting()) {
+                        collectible.collect();
+                    }
+                }
+            }
+        });
+    }
+
+    /**
+     * RENDU DES PLATEFORMES
+     */
+    private void renderPlatforms() {
+        for (Platform platform : clientPlatforms.values()) {
+            platform.render(batch);
+        }
+    }
+
+    /**
+     * RENDU DES COLLECTIBLES
+     */
+    private void renderCollectibles() {
+        for (Collectible collectible : clientCollectibles.values()) {
+            collectible.render(batch);
+        }
     }
 
     @Override
@@ -473,12 +523,23 @@ public class GameScreen implements Screen, NetworkListener {
     @Override
     public void onDisconnectedFromServer() {
         Gdx.app.postRunnable(() -> {
-            System.out.println("Déconnecté du serveur, retour au menu");
-            // Nettoyer les joueurs distants
-            remotePlayers.clear();
+            System.out.println("🔌 Déconnecté du serveur, retour au menu");
 
-            // Retourner au menu principal
-            game.setScreen(new LobbyScreen(game));
+            // ✅ CORRECTION: Nettoyer les joueurs distants
+            remotePlayers.clear();
+            clientCollectibles.clear();
+
+            // ✅ CORRECTION: Attendre un peu avant de retourner au lobby
+            new Thread(() -> {
+                try {
+                    Thread.sleep(500); // Petit délai pour voir le message
+                    Gdx.app.postRunnable(() -> {
+                        game.setScreen(new LobbyScreen(game));
+                    });
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }).start();
         });
     }
 
@@ -507,7 +568,7 @@ public class GameScreen implements Screen, NetworkListener {
 
     @Override
     public void show() {
-        System.out.println("🎮 GameScreen SHOW() - Connecté: " + networkManager.isConnected());
+        System.out.println("🎮 GameScreen SHOW() - Connecté: " + networkManager.isConnected() + ", Host: " + networkManager.isHost());
     }
 
     @Override
@@ -537,10 +598,16 @@ public class GameScreen implements Screen, NetworkListener {
         }
         remotePlayers.clear();
 
-        for (Platform platform : platforms) {
+        // ✅ MODIFICATION: Nettoyer les plateformes depuis la Map
+        for (Platform platform : clientPlatforms.values()) {
             platform.dispose();
         }
-        for (Collectible collectible : collectibles) {
+        clientPlatforms.clear();
+
+//        for (Platform platform : platforms) {
+//            platform.dispose();
+//        }
+        for (Collectible collectible : clientCollectibles.values()) {
             collectible.dispose();
         }
         assets.dispose();

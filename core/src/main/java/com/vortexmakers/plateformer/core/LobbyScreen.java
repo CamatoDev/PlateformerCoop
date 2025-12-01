@@ -52,7 +52,8 @@ public class LobbyScreen implements Screen, NetworkListener {
 
     public LobbyScreen(PlateformerGame game) {
         this.game = game;
-        this.networkManager = new NetworkManager();
+        // ✅ UTILISATION DU SINGLETON
+        this.networkManager = NetworkManager.getInstance();
         this.networkManager.setNetworkListener(this);
     }
 
@@ -250,6 +251,19 @@ public class LobbyScreen implements Screen, NetworkListener {
         });
     }
 
+    @Override
+    public void onPlatformStateReceived(PlatformStateMessage message) {
+        // Pas utilisé dans le lobby
+        System.out.println("🏗️ État plateformes reçu (lobby)");
+    }
+
+    // ✅ AJOUTER CETTE MÉTHODE MANQUANTE :
+    @Override
+    public void onCollectibleStateReceived(CollectibleStateMessage message) {
+        // Pas utilisé dans le lobby - laisser vide
+        System.out.println("📦 État collectibles reçu (lobby) - " + message.collectibles.size() + " collectibles");
+    }
+
     // AUTRES MÉTHODES SCREEN ===========================
 
     @Override
@@ -258,14 +272,15 @@ public class LobbyScreen implements Screen, NetworkListener {
     }
 
     @Override
-    public void pause() {}
+    public void pause() {
+    }
 
     @Override
-    public void resume() {}
+    public void resume() {
+    }
 
     @Override
     public void hide() {
-        dispose();
     }
 
     @Override

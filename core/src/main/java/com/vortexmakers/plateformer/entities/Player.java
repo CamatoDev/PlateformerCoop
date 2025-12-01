@@ -128,53 +128,52 @@ public class Player implements GameEntity {
         }
     }
 
-    private void updateBounds() {
+    public void updateBounds() {
         bounds.setPosition(position);
     }
 
-    private void updateAnimation(float delta) {
-        // DÉTECTION DE L'ÉTAT
-        boolean wasWalking = isWalking;
-        isWalking = Math.abs(velocity.x) > 10f && isGrounded;
-        boolean isJumping = !isGrounded;
+    public void updateAnimation(float delta) {
+        // ✅ ÉTATS CLAIRS ET DISTINCTS
+        boolean isMoving = Math.abs(velocity.x) > 5f; // Seuil plus élevé
+        boolean isInAir = !isGrounded;
+        boolean isActuallyJumping = isInAir && velocity.y > 0; // Monter = saut
 
-        // CHANGEMENT DE TEXTURE SELON L'ÉTAT
-        if (isJumping) {
-            // ÉTAT : SAUT
-            currentTexture = assets.getPlayerJump();
-            currentFrame = new TextureRegion(currentTexture);
-        } else if (isWalking) {
-            // ÉTAT : MARCHE - ANIMATION
+        // ✅ LOGIQUE D'ANIMATION SIMPLIFIÉE
+        if (isInAir) {
+            if (isActuallyJumping) {
+                currentTexture = assets.getPlayerJump();
+            } else {
+                currentTexture = assets.getPlayerJump(); // Ou une texture de chute si disponible
+            }
+            walkAnimationTimer = 0f; // Reset timer en l'air
+        } else if (isMoving) {
+            // ANIMATION DE MARCHE
             walkAnimationTimer += delta;
-
-            // Alterner entre walkA et walkB
             if (walkAnimationTimer >= Constants.WALK_ANIMATION_SPEED) {
                 walkAnimationTimer = 0f;
-                // Alterner entre les deux frames de marche
+                // ALTERNANCE DES TEXTURES DE MARCHE
                 if (currentTexture == assets.getPlayerWalkA()) {
                     currentTexture = assets.getPlayerWalkB();
                 } else {
                     currentTexture = assets.getPlayerWalkA();
                 }
-                currentFrame = new TextureRegion(currentTexture);
             }
         } else {
-            // ÉTAT : IDLE
+            // IDLE
             currentTexture = assets.getPlayerIdle();
-            currentFrame = new TextureRegion(currentTexture);
+            walkAnimationTimer = 0f;
         }
 
-        // GESTION DE LA DIRECTION =======================
-        // Flip horizontal selon la direction du mouvement
-        if (velocity.x > 0) {
+        // ✅ GESTION DE LA DIRECTION
+        if (velocity.x > 1f) {
             facingRight = true;
-        } else if (velocity.x < 0) {
+        } else if (velocity.x < -1f) {
             facingRight = false;
         }
 
-        // Appliquer le flip si nécessaire
-        if ((facingRight && currentFrame.isFlipX()) ||
-            (!facingRight && !currentFrame.isFlipX())) {
+        // ✅ APPLICATION DE LA DIRECTION
+        currentFrame = new TextureRegion(currentTexture);
+        if ((facingRight && currentFrame.isFlipX()) || (!facingRight && !currentFrame.isFlipX())) {
             currentFrame.flip(true, false);
         }
     }
@@ -231,13 +230,6 @@ public class Player implements GameEntity {
     }
 
     // GETTERS ET SETTERS POUR LES JOUEURS DISTANTS
-
-    public void applySimpleGravity() {
-        // Utilise ta constante GRAVITY existante
-        if (!isGrounded) {
-            velocity.y += Constants.GRAVITY; // ou ta variable de gravité
-        }
-    }
 
     public void setPosition(float x, float y) {
         position.set(x, y);
