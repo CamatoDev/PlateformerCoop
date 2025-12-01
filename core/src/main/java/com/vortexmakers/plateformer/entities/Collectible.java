@@ -118,6 +118,8 @@ public class Collectible implements GameEntity {
     }
 
     public void dispose() {
-
+        // Nettoyer les références
+        coinTexture = null;
+        assets = null;
     }
 }

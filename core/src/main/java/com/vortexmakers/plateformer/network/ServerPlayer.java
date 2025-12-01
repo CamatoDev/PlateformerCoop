@@ -47,32 +47,40 @@ public class ServerPlayer {
      * APPLIQUER LA PHYSIQUE SERVEUR AVEC GRAVITÉ CORRECTE
      */
     public void applyServerPhysics(float delta) {
-        // ✅ GRAVITÉ STABLE
+        // ✅ GRAVITÉ CONDITIONNELLE STRICTE
         if (!isGrounded) {
             velocityY += Constants.GRAVITY * delta;
         } else {
-            velocityY = Math.max(velocityY, 0); // Empêche la vélocité négative au sol
+            // ✅ CORRECTION : Forcer vélocité Y à exactement 0 au sol
+            velocityY = 0;
         }
 
-        // ✅ MOUVEMENT HORIZONTAL STABLE
+        // MOUVEMENT HORIZONTAL (inchangé)
         float targetVelocityX = currentInputX * Constants.MAX_PLAYER_SPEED;
+        float controlFactor = isGrounded ? 1.0f : Constants.AIR_CONTROL_FACTOR;
 
-        // Interpolation douce vers la vitesse cible
         if (currentInputX != 0) {
-            velocityX = targetVelocityX; // Changement immédiat
+            if (velocityX < targetVelocityX) {
+                velocityX = Math.min(velocityX + Constants.PLAYER_ACCELERATION * delta * controlFactor, targetVelocityX);
+            } else if (velocityX > targetVelocityX) {
+                velocityX = Math.max(velocityX - Constants.PLAYER_ACCELERATION * delta * controlFactor, targetVelocityX);
+            }
         } else {
-            // Décélération progressive
             if (velocityX > 0) {
                 velocityX = Math.max(velocityX - Constants.PLAYER_DECELERATION * delta, 0);
             } else if (velocityX < 0) {
                 velocityX = Math.min(velocityX + Constants.PLAYER_DECELERATION * delta, 0);
             }
+
+            if (Math.abs(velocityX) < 10f) {
+                velocityX = 0;
+            }
         }
 
-        // ✅ SAUT FIABLE
+        // ✅ SAUT AVEC VÉRIFICATION STRICTE
         if (currentJumpPressed && isGrounded) {
             velocityY = Constants.JUMP_FORCE;
-            isGrounded = false;
+            isGrounded = false; // Décoller immédiatement
             currentJumpPressed = false;
         }
 
@@ -82,11 +90,17 @@ public class ServerPlayer {
 
         updateBounds();
 
-        // ✅ LIMITES STABLES
-        if (x < 0) x = 0;
+        // LIMITES DU MONDE
+        if (x < 0) {
+            x = 0;
+            velocityX = 0;
+        }
         if (x > Constants.WORLD_WIDTH - Constants.PLAYER_WIDTH) {
             x = Constants.WORLD_WIDTH - Constants.PLAYER_WIDTH;
+            velocityX = 0;
         }
+
+        // SOL DE SECOURS
         if (y < 0) {
             y = 0;
             velocityY = 0;

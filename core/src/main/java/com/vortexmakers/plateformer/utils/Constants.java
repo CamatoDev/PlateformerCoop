@@ -27,9 +27,10 @@ public class Constants {
     public static final float JUMP_FORCE = 400f;
     public static final float PLAYER_ACCELERATION = 800f;
     public static final float PLAYER_DECELERATION = 600f;
-    public static final float MAX_PLAYER_SPEED = 200f;
+    public static final float MAX_PLAYER_SPEED = 230f;
     public static final float WALK_ANIMATION_SPEED = 0.15f; // Secondes entre chaque frame
     public static final float AIR_CONTROL_FACTOR = 0.6f; // Contrôle réduit en l'air
+    public static final int MAX_SEQUENCE = 1000000; // Éviter les débordements
 
     // Tailles
     public static final float PLAYER_WIDTH = 32f;
@@ -45,4 +46,5 @@ public class Constants {
     public static final float CAMERA_SMOOTHNESS = 5f; // Lissage du mouvement
 
     public static final float NETWORK_UPDATE_INTERVAL = 1f / 20f; // 20 fois par seconde
+    public static final float SERVER_UPDATE_INTERVAL = 1f / 30f; // 60Hz
 }

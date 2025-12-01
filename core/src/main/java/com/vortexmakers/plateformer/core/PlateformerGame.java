@@ -9,6 +9,7 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.GL20;
 import com.vortexmakers.plateformer.network.NetworkManager;
+import com.vortexmakers.plateformer.utils.AssetManager;
 
 public class PlateformerGame extends Game {
     // ✅ RÉFÉRENCE AU SINGLETON
@@ -33,9 +34,26 @@ public class PlateformerGame extends Game {
 
     @Override
     public void dispose() {
-        // ✅ NETTOYAGE GLOBAL
-        if (networkManager != null) {
-            NetworkManager.resetInstance(); // Ou networkManager.disconnect()
+        System.out.println("🧹 Nettoyage global du jeu...");
+
+        // Disposer l'écran actuel
+        if (screen != null) {
+            screen.dispose();
         }
+
+        // ✅ NOUVEAU : Disposer l'AssetManager globalement
+        AssetManager assetManager = AssetManager.getInstance();
+        if (assetManager != null && assetManager.areAssetsLoaded()) {
+            assetManager.dispose();
+            System.out.println("✅ AssetManager disposé");
+        }
+
+        // Nettoyage réseau
+        if (networkManager != null) {
+            networkManager.disconnect();
+            NetworkManager.resetInstance();
+        }
+
+        System.out.println("✅ Jeu complètement nettoyé");
     }
 }

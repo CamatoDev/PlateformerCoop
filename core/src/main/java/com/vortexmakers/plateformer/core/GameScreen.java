@@ -56,7 +56,6 @@ public class GameScreen implements Screen, NetworkListener {
 
     // SÉQUENCE D'INPUT POUR LA RÉCONCILIATION
     private int inputSequence = 0;
-    private static final int MAX_SEQUENCE = 1000000; // Éviter les débordements
 
     private PhysicsSystem physicsSystem;
 
@@ -74,6 +73,9 @@ public class GameScreen implements Screen, NetworkListener {
     // Positions pour effet parallaxe
     private float cloudOffset = 0;
     private float treesOffset = 0f;
+
+    private boolean platformsReceived = false;
+    private boolean gameReady = false;
 
     public GameScreen(PlateformerGame game, NetworkManager networkManager) {
         System.out.println("🎮 CREATION GameScreen - ID: " + networkManager.getLocalPlayerId());
@@ -106,7 +108,7 @@ public class GameScreen implements Screen, NetworkListener {
         this.backgroundClouds = assets.getBackgroundClouds();
 
         // Création des entités
-        localPlayer = new Player(50, Constants.PLATFORM_HEIGHT);  // CRÉATION DU JOUEUR LOCAL
+        localPlayer = new Player(50, 300);  // CRÉATION DU JOUEUR LOCAL
         // ✅ MODIFICATION: Initialiser la Map
         this.clientPlatforms = new HashMap<>();
         this.clientCollectibles = new HashMap<>();
@@ -118,10 +120,19 @@ public class GameScreen implements Screen, NetworkListener {
 
     @Override
     public void render(float delta) {
-        // ✅ CORRECTION: Vérifier si on est toujours connecté
+        // Vérifier connexion
         if (!networkManager.isConnected()) {
             System.out.println("⚠️ Plus connecté au serveur, retour au menu...");
             game.setScreen(new LobbyScreen(game));
+            return;
+        }
+
+        // ✅ NOUVEAU : Attendre que les plateformes soient reçues
+        if (!gameReady) {
+            // Afficher un écran de chargement simple
+            batch.begin();
+            // Vous pouvez dessiner "Chargement..." ici si vous voulez
+            batch.end();
             return;
         }
 
@@ -207,7 +218,7 @@ public class GameScreen implements Screen, NetworkListener {
 
                 // ✅ CORRECTION AVEC GESTION DE DÉBORDEMENT
                 int currentSequence = inputSequence;
-                inputSequence = (inputSequence + 1) % MAX_SEQUENCE;
+                inputSequence = (inputSequence + 1) % Constants.MAX_SEQUENCE;
 
                 networkManager.sendPlayerInput(
                     leftPressed,
@@ -429,13 +440,6 @@ public class GameScreen implements Screen, NetworkListener {
                     localPlayer.setGrounded(playerData.isGrounded);
                     localPlayer.setPosition(playerData.x, playerData.y);
                     localPlayer.setVelocity(playerData.velocityX, playerData.velocityY);
-
-                    // ✅ DEBUG: Vérifier l'état reçu
-                    if (playerData.isGrounded) {
-                        System.out.println("🟢 Client: Joueur local au sol");
-                    } else {
-                        System.out.println("🔴 Client: Joueur local en l'air");
-                    }
                 } else {
                     Player remotePlayer = remotePlayers.get(playerId);
                     if (remotePlayer != null) {
@@ -451,7 +455,7 @@ public class GameScreen implements Screen, NetworkListener {
     @Override
     public void onPlatformStateReceived(PlatformStateMessage message) {
         Gdx.app.postRunnable(() -> {
-            //System.out.println("📦 CLIENT: Réception " + message.platforms.size() + " plateformes");
+            System.out.println("📦 CLIENT: Réception " + message.platforms.size() + " plateformes");
 
             clientPlatforms.clear();
 
@@ -468,7 +472,11 @@ public class GameScreen implements Screen, NetworkListener {
                 clientPlatforms.put(i, platform);
             }
 
-            //System.out.println("✅ " + clientPlatforms.size() + " plateformes créées côté client");
+            // ✅ NOUVEAU : Marquer que les plateformes sont reçues
+            platformsReceived = true;
+            gameReady = true;
+
+            System.out.println("✅ " + clientPlatforms.size() + " plateformes créées - Jeu prêt !");
         });
     }
 
@@ -588,33 +596,42 @@ public class GameScreen implements Screen, NetworkListener {
 
     @Override
     public void dispose() {
-        // Nettoyage des ressources
-        batch.dispose();
-        localPlayer.dispose();
+        // Nettoyage des ressources graphiques
+        if (batch != null) {
+            batch.dispose();
+            batch = null;
+        }
+
+        // Nettoyage du joueur local
+        if (localPlayer != null) {
+            localPlayer.dispose();
+            localPlayer = null;
+        }
 
         // Nettoyer les joueurs distants
         for (Player remotePlayer : remotePlayers.values()) {
-            remotePlayer.dispose();
+            if (remotePlayer != null) {
+                remotePlayer.dispose();
+            }
         }
         remotePlayers.clear();
 
-        // ✅ MODIFICATION: Nettoyer les plateformes depuis la Map
+        // Nettoyer les plateformes
         for (Platform platform : clientPlatforms.values()) {
-            platform.dispose();
+            if (platform != null) {
+                platform.dispose();
+            }
         }
         clientPlatforms.clear();
 
-//        for (Platform platform : platforms) {
-//            platform.dispose();
-//        }
+        // Nettoyer les collectibles
         for (Collectible collectible : clientCollectibles.values()) {
-            collectible.dispose();
+            if (collectible != null) {
+                collectible.dispose();
+            }
         }
-        assets.dispose();
+        clientCollectibles.clear();
 
-        // Fermer la connexion réseau
-        if (networkManager != null) {
-            networkManager.disconnect();
-        }
+        System.out.println("✅ GameScreen nettoyé");
     }
 }

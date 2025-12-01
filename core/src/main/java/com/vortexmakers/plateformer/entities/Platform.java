@@ -66,6 +66,8 @@ public class Platform implements GameEntity {
     }
 
     public void dispose() {
-
+        // ✅ Juste mettre à null pour aider le garbage collector
+        platformTexture = null;
+        assets = null;
     }
 }

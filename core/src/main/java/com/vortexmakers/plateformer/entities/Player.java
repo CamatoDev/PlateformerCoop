@@ -133,45 +133,46 @@ public class Player implements GameEntity {
     }
 
     public void updateAnimation(float delta) {
-        // ✅ ÉTATS CLAIRS ET DISTINCTS
-        boolean isMoving = Math.abs(velocity.x) > 5f; // Seuil plus élevé
-        boolean isInAir = !isGrounded;
-        boolean isActuallyJumping = isInAir && velocity.y > 0; // Monter = saut
+        // ✅ DÉTECTION D'ÉTAT CLAIRE
+        boolean isMovingHorizontally = Math.abs(velocity.x) > 5f;
 
-        // ✅ LOGIQUE D'ANIMATION SIMPLIFIÉE
-        if (isInAir) {
-            if (isActuallyJumping) {
+        // ✅ CORRECTION PRINCIPALE : Priorité claire des animations
+        if (!isGrounded) {
+            // EN L'AIR : Afficher toujours le saut
+            if (currentTexture != assets.getPlayerJump()) {
                 currentTexture = assets.getPlayerJump();
-            } else {
-                currentTexture = assets.getPlayerJump(); // Ou une texture de chute si disponible
             }
-            walkAnimationTimer = 0f; // Reset timer en l'air
-        } else if (isMoving) {
-            // ANIMATION DE MARCHE
-            walkAnimationTimer += delta;
-            if (walkAnimationTimer >= Constants.WALK_ANIMATION_SPEED) {
-                walkAnimationTimer = 0f;
-                // ALTERNANCE DES TEXTURES DE MARCHE
-                if (currentTexture == assets.getPlayerWalkA()) {
-                    currentTexture = assets.getPlayerWalkB();
-                } else {
-                    currentTexture = assets.getPlayerWalkA();
-                }
-            }
+            // Ne PAS toucher au timer de marche
+
         } else {
-            // IDLE
-            currentTexture = assets.getPlayerIdle();
-            walkAnimationTimer = 0f;
+            // AU SOL : Idle ou marche
+            if (isMovingHorizontally) {
+                // ANIMATION DE MARCHE
+                walkAnimationTimer += delta;
+                if (walkAnimationTimer >= Constants.WALK_ANIMATION_SPEED) {
+                    walkAnimationTimer = 0f;
+
+                    if (currentTexture == assets.getPlayerWalkA()) {
+                        currentTexture = assets.getPlayerWalkB();
+                    } else {
+                        currentTexture = assets.getPlayerWalkA();
+                    }
+                }
+            } else {
+                // ANIMATION IDLE
+                currentTexture = assets.getPlayerIdle();
+                walkAnimationTimer = 0f;
+            }
         }
 
-        // ✅ GESTION DE LA DIRECTION
+        // Gestion direction
         if (velocity.x > 1f) {
             facingRight = true;
         } else if (velocity.x < -1f) {
             facingRight = false;
         }
 
-        // ✅ APPLICATION DE LA DIRECTION
+        // Application direction
         currentFrame = new TextureRegion(currentTexture);
         if ((facingRight && currentFrame.isFlipX()) || (!facingRight && !currentFrame.isFlipX())) {
             currentFrame.flip(true, false);
@@ -226,7 +227,12 @@ public class Player implements GameEntity {
     }
 
     public void dispose() {
+        // Nettoyer les références pour le GC
+        currentTexture = null;
+        currentFrame = null;
+        assets = null;
 
+        System.out.println("Player nettoyé (références libérées)");
     }
 
     // GETTERS ET SETTERS POUR LES JOUEURS DISTANTS

@@ -54,12 +54,14 @@ public class NetworkManager {
     private List<PlatformStateMessage.PlatformData> serverPlatforms;
     private int nextCollectibleId = 0;
 
+    private boolean initialStateSent = false;
     // TIMING SERVEUR ===================================
     private float serverUpdateTimer = 0f;
-    private static final float SERVER_UPDATE_INTERVAL = 1f / 20f; // 60Hz
 
     // Pour le serveur : suivre tous les joueurs
     private Map<Integer, GameStateMessage.PlayerData> connectedPlayers;
+    // Pour suivre la dernière séquence reçue de chaque joueur
+    private Map<Integer, Integer> lastReceivedSequence;
 
     // CONSTRUCTEUR PRIVÉ
     private NetworkManager() {
@@ -67,6 +69,7 @@ public class NetworkManager {
         this.serverPlayers = new HashMap<>();
         this.serverCollectibles = new ArrayList<>();
         this.serverPlatforms = new ArrayList<>();
+        this.lastReceivedSequence = new HashMap<>();
         System.out.println("🎮 NetworkManager créé (Singleton)");
     }
 
@@ -220,14 +223,14 @@ public class NetworkManager {
         if (!isHost || server == null) return;
 
         serverUpdateTimer += delta;
-        if (serverUpdateTimer >= SERVER_UPDATE_INTERVAL) {
+        if (serverUpdateTimer >= Constants.SERVER_UPDATE_INTERVAL) {
             serverUpdateTimer = 0f;
 
             // ✅ CORRECTION: Toujours mettre à jour et envoyer, même sans joueurs
             if (!serverPlayers.isEmpty()) {
                 // APPLIQUER LA PHYSIQUE À TOUS LES JOUEURS
                 for (ServerPlayer serverPlayer : serverPlayers.values()) {
-                    serverPlayer.applyServerPhysics(SERVER_UPDATE_INTERVAL);
+                    serverPlayer.applyServerPhysics(Constants.SERVER_UPDATE_INTERVAL);
                     checkServerPlatformCollisions(serverPlayer);
                     checkServerCollectibleCollisions(serverPlayer);
                 }
@@ -237,7 +240,7 @@ public class NetworkManager {
 
             // ✅ CORRECTION: Envoyer les états même sans joueurs (pour synchronisation initiale)
             sendGameStateToAll();
-            sendPlatformStateToAll();
+            //sendPlatformStateToAll();
             sendCollectibleStateToAll();
         }
     }
@@ -248,44 +251,54 @@ public class NetworkManager {
     private boolean resolveServerCollision(ServerPlayer serverPlayer, Rectangle platform) {
         Rectangle playerBounds = serverPlayer.getBounds();
 
-        // ✅ CORRECTION: Calcul correct des chevauchements
+        // Calcul des chevauchements
         float overlapLeft = playerBounds.x + playerBounds.width - platform.x;
         float overlapRight = platform.x + platform.width - playerBounds.x;
-        float overlapTop = platform.y + platform.height - playerBounds.y; // CORRIGÉ
-        float overlapBottom = playerBounds.y + playerBounds.height - platform.y; // CORRIGÉ
+        float overlapTop = platform.y + platform.height - playerBounds.y;
+        float overlapBottom = playerBounds.y + playerBounds.height - platform.y;
 
-        // Vérifier que les chevauchements sont positifs
+        // Vérifier chevauchements positifs
         if (overlapLeft <= 0 || overlapRight <= 0 || overlapTop <= 0 || overlapBottom <= 0) {
             return false;
         }
 
-        // TROUVER LA PLUS PETITE PÉNÉTRATION
+        // Trouver la plus petite pénétration
         float minOverlap = Math.min(Math.min(overlapLeft, overlapRight),
             Math.min(overlapTop, overlapBottom));
 
-        // RÉSOLUTION DE LA COLLISION
-        if (minOverlap == overlapTop) {
-            // COLLISION PAR LE HAUT : le joueur atterrit sur la plateforme
+        // ✅ CORRECTION : Seuil plus strict pour éviter les collisions ambiguës
+        final float COLLISION_THRESHOLD = 1.0f;
+
+        if (minOverlap == overlapTop && overlapTop > COLLISION_THRESHOLD) {
+            // COLLISION PAR LE HAUT : atterrissage
+            // ✅ CORRECTION : Positionner EXACTEMENT sur la plateforme
             serverPlayer.y = platform.y + platform.height;
             serverPlayer.velocityY = 0;
+            serverPlayer.updateBounds();
             return true;
 
-        } else if (minOverlap == overlapBottom) {
-            // COLLISION PAR LE BAS : le joueur heurte le plafond
+        } else if (minOverlap == overlapBottom && overlapBottom > COLLISION_THRESHOLD) {
+            // COLLISION PAR LE BAS : plafond
             serverPlayer.y = platform.y - playerBounds.height;
-            serverPlayer.velocityY = 0;
+            // ✅ CORRECTION : Annuler seulement la vélocité positive
+            if (serverPlayer.velocityY > 0) {
+                serverPlayer.velocityY = 0;
+            }
+            serverPlayer.updateBounds();
             return false;
 
-        } else if (minOverlap == overlapLeft) {
+        } else if (minOverlap == overlapLeft && overlapLeft > COLLISION_THRESHOLD) {
             // COLLISION PAR LA GAUCHE
             serverPlayer.x = platform.x - playerBounds.width;
             serverPlayer.velocityX = 0;
+            serverPlayer.updateBounds();
             return false;
 
-        } else if (minOverlap == overlapRight) {
+        } else if (minOverlap == overlapRight && overlapRight > COLLISION_THRESHOLD) {
             // COLLISION PAR LA DROITE
             serverPlayer.x = platform.x + platform.width;
             serverPlayer.velocityX = 0;
+            serverPlayer.updateBounds();
             return false;
         }
 
@@ -297,26 +310,46 @@ public class NetworkManager {
      */
     private void checkServerPlatformCollisions(ServerPlayer serverPlayer) {
         boolean grounded = false;
-        int collisionCount = 0;
+
+        // ✅ NOUVEAU : Tolérance pour éviter les micro-gaps
+        final float GROUND_TOLERANCE = 2.0f; // Pixels de tolérance
 
         for (PlatformStateMessage.PlatformData platform : serverPlatforms) {
-            // ✅ CONVERTIR PlatformData en Rectangle pour les collisions
             Rectangle platformRect = new Rectangle(platform.x, platform.y, platform.width, platform.height);
+            Rectangle playerBounds = serverPlayer.getBounds();
 
-            if (serverPlayer.getBounds().overlaps(platformRect)) {
-                collisionCount++;
-                grounded = resolveServerCollision(serverPlayer, platformRect) || grounded;
+            // ✅ CORRECTION : Vérifier si le joueur est "proche" du sol
+            boolean isNearGround =
+                playerBounds.y <= platformRect.y + platformRect.height + GROUND_TOLERANCE &&
+                    playerBounds.y + playerBounds.height > platformRect.y &&
+                    playerBounds.x + playerBounds.width > platformRect.x &&
+                    playerBounds.x < platformRect.x + platformRect.width;
+
+            if (playerBounds.overlaps(platformRect)) {
+                boolean wasGroundedThisCollision = resolveServerCollision(serverPlayer, platformRect);
+                grounded = wasGroundedThisCollision || grounded;
+            } else if (isNearGround && Math.abs(serverPlayer.velocityY) < 10f) {
+                // ✅ NOUVEAU : Si très proche du sol et pas beaucoup de vélocité Y,
+                // considérer comme au sol (évite les micro-rebonds)
+                grounded = true;
             }
         }
 
-        if (collisionCount > 0) {
-            //System.out.println("🔄 " + collisionCount + " collision(s) résolue(s) pour joueur " + serverPlayer.playerId);
-        }
-
+        // Mise à jour de l'état
+        boolean wasGrounded = serverPlayer.isGrounded;
         serverPlayer.isGrounded = grounded;
 
-        if (serverPlayer.isGrounded) {
-            System.out.println("🟢 Joueur " + serverPlayer.playerId + " est au sol");
+        // ✅ CORRECTION : Forcer vélocité Y à 0 si au sol
+        if (grounded && serverPlayer.velocityY < 0) {
+            serverPlayer.velocityY = 0;
+        }
+
+        // Logger seulement les changements significatifs (pas chaque frame)
+        if (!wasGrounded && grounded) {
+            System.out.println("🟢 Joueur " + serverPlayer.playerId + " atterrit");
+        } else if (wasGrounded && !grounded && serverPlayer.velocityY > 10f) {
+            // ✅ CORRECTION : Logger seulement si vraiment un saut (pas un micro-gap)
+            System.out.println("🔴 Joueur " + serverPlayer.playerId + " décolle");
         }
     }
 
@@ -405,12 +438,37 @@ public class NetworkManager {
         }
     }
 
-    // ✅ MODIFICATION: sendInitialGameState pour tout envoyer
-    public void sendInitialGameState() {
-        System.out.println("📦 Envoi de l'état initial complet");
-        sendPlatformStateToAll();
-        sendGameStateToAll();
-        sendCollectibleStateToAll();
+    /**
+     * ✅ NOUVEAU : Envoyer l'état initial à UN joueur spécifique dans l'ordre correct
+     */
+    private void sendInitialGameStateToPlayer(Connection connection) {
+        try {
+            // ÉTAPE 1 : Envoyer les plateformes (CRITIQUE)
+            PlatformStateMessage platformState = new PlatformStateMessage();
+            platformState.platforms.addAll(serverPlatforms);
+            connection.sendTCP(platformState); // TCP pour garantir l'ordre
+
+            System.out.println("📦 [SERVEUR] Plateformes envoyées à joueur " + connection.getID());
+
+            // ÉTAPE 2 : Envoyer les collectibles
+            CollectibleStateMessage collectibleState = new CollectibleStateMessage();
+            collectibleState.collectibles.addAll(serverCollectibles);
+            connection.sendTCP(collectibleState);
+
+            System.out.println("🎯 [SERVEUR] Collectibles envoyés à joueur " + connection.getID());
+
+            // ÉTAPE 3 : Envoyer l'état du jeu
+            GameStateMessage gameState = new GameStateMessage();
+            gameState.serverTime = System.currentTimeMillis();
+            gameState.playerStates.putAll(connectedPlayers);
+            connection.sendTCP(gameState);
+
+            System.out.println("🎮 [SERVEUR] État du jeu envoyé à joueur " + connection.getID());
+
+        } catch (Exception e) {
+            System.err.println("❌ Erreur envoi état initial: " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 
     /**
@@ -513,16 +571,15 @@ public class NetworkManager {
     private void sendJoinMessage() {
         System.out.println("📤 [CLIENT] Envoi de PlayerJoinMessage...");
 
-        // ✅ CORRECTION: Ne pas utiliser localPlayerId (-1) dans le message
-        // Le serveur assignera l'ID correct
+        // ✅ CORRECTION : Toujours envoyer -1, le serveur assignera le vrai ID
         PlayerJoinMessage joinMessage = new PlayerJoinMessage(
-            -1, // Le serveur remplacera par le vrai ID
+            -1,  // Le serveur remplacera par le vrai ID
             localPlayerName,
-            50, 300  // Position de départ
+            50, 300
         );
-        System.out.println("📤 [CLIENT] PlayerJoinMessage créé - Nom: " + joinMessage.playerName);
+
         client.sendTCP(joinMessage);
-        System.out.println("📤 [CLIENT] PlayerJoinMessage envoyé via TCP");
+        System.out.println("📤 [CLIENT] PlayerJoinMessage envoyé, attente confirmation ID...");
     }
 
     /**
@@ -560,24 +617,28 @@ public class NetworkManager {
         int newPlayerId = connection.getID();
         message.playerId = newPlayerId;
 
-        // ✅ CORRECTION: Position de départ SUR le sol
-        float startY = 300; // Début sur la première plateforme
         GameStateMessage.PlayerData playerData = new GameStateMessage.PlayerData(
-            message.startX, message.startY, // Y corrigé
-            0, 0, false, message.playerName // Déjà grounded
+            message.startX, message.startY,
+            0, 0, false, message.playerName
         );
         connectedPlayers.put(newPlayerId, playerData);
 
-        // ✅ CRÉER LE JOUEUR SERVEUR avec la même position
         ServerPlayer serverPlayer = new ServerPlayer(message.startX, message.startY, newPlayerId);
-        serverPlayer.isGrounded = true; // Déjà sur le sol
+        serverPlayer.isGrounded = true;
         serverPlayers.put(newPlayerId, serverPlayer);
 
-        // Diffuser à tous
-        server.sendToAllTCP(message);
+        // Confirmation au joueur
+        connection.sendTCP(message);
 
-        // Envoyer l'état actuel au nouveau joueur
-        sendInitialGameState();
+        // Diffuser aux autres
+        for (Connection conn : server.getConnections()) {
+            if (conn.getID() != newPlayerId) {
+                conn.sendTCP(message);
+            }
+        }
+
+        // ✅ NOUVEAU : Envoyer l'état initial DANS L'ORDRE GARANTI
+        sendInitialGameStateToPlayer(connection);
 
         System.out.println("🎮 Nouveau joueur: " + message.playerName + " (ID: " + newPlayerId + ")");
     }
@@ -587,13 +648,40 @@ public class NetworkManager {
      */
     private void handlePlayerInput(PlayerInputMessage message) {
         ServerPlayer serverPlayer = serverPlayers.get(message.playerId);
-        if (serverPlayer != null) {
-            // METTRE À JOUR LES INPUTS DU JOUEUR SERVEUR
-            serverPlayer.currentInputX = 0;
-            if (message.leftPressed) serverPlayer.currentInputX -= 1;
-            if (message.rightPressed) serverPlayer.currentInputX += 1;
-            serverPlayer.currentJumpPressed = message.jumpPressed;
+        if (serverPlayer == null) {
+            return;
         }
+
+        // ✅ NOUVEAU : Vérifier la séquence pour éviter les inputs en retard
+        Integer lastSeq = lastReceivedSequence.get(message.playerId);
+
+        if (lastSeq != null) {
+            // Gérer le débordement de séquence
+            int diff = message.inputSequence - lastSeq;
+
+            // Si la différence est négative et grande, c'est un débordement
+            if (diff < -500000) {
+                // Débordement détecté (ex: 999999 -> 0)
+                diff += Constants.MAX_SEQUENCE;
+            }
+
+            // Ignorer les inputs en retard (séquence plus ancienne)
+            if (diff < 0) {
+                System.out.println("⚠️ Input en retard ignoré - Joueur: " + message.playerId +
+                    ", Séquence reçue: " + message.inputSequence +
+                    ", Dernière: " + lastSeq);
+                return;
+            }
+        }
+
+        // Mettre à jour la dernière séquence reçue
+        lastReceivedSequence.put(message.playerId, message.inputSequence);
+
+        // APPLIQUER LES INPUTS
+        serverPlayer.currentInputX = 0;
+        if (message.leftPressed) serverPlayer.currentInputX -= 1;
+        if (message.rightPressed) serverPlayer.currentInputX += 1;
+        serverPlayer.currentJumpPressed = message.jumpPressed;
     }
 
     /**
@@ -620,6 +708,8 @@ public class NetworkManager {
      */
     private void handlePlayerDisconnected(int playerId) {
         connectedPlayers.remove(playerId);
+        serverPlayers.remove(playerId); // ✅ AJOUT : Nettoyer le joueur serveur
+        lastReceivedSequence.remove(playerId); // ✅ NOUVEAU : Nettoyer la séquence
 
         // Informer tous les clients
         PlayerLeaveMessage leaveMessage = new PlayerLeaveMessage(playerId);
@@ -635,17 +725,24 @@ public class NetworkManager {
      * GESTION DES MESSAGES COTÉ CLIENT
      */
     private void handleClientMessage(Object object) {
-
         if (object instanceof PlayerJoinMessage) {
             PlayerJoinMessage message = (PlayerJoinMessage) object;
-            System.out.println("🆔 [CLIENT] PlayerJoinMessage reçu - ID: " + message.playerId + ", Nom: " + message.playerName);
 
-            // ✅ CORRECTION: Toujours mettre à jour notre ID si on reçoit un PlayerJoinMessage nous concernant
-            if (message.playerName.equals(localPlayerName) || message.playerId == localPlayerId) {
+            // ✅ CORRECTION : Vérifier si c'est NOTRE confirmation d'ID
+            if (localPlayerId == -1) {
+                // C'est forcément notre propre message de confirmation
                 localPlayerId = message.playerId;
-                System.out.println("🆔 [CLIENT] ID mis à jour: " + localPlayerId);
+                System.out.println("✅ [CLIENT] ID confirmé par le serveur: " + localPlayerId);
+
+                // Notifier le listener
+                if (networkListener != null) {
+                    networkListener.onPlayerJoined(message);
+                }
+                return; // Ne pas créer de joueur pour nous-même
             }
 
+            // Sinon, c'est un autre joueur qui rejoint
+            System.out.println("👤 [CLIENT] Autre joueur rejoint - ID: " + message.playerId);
             if (networkListener != null) {
                 networkListener.onPlayerJoined(message);
             }
