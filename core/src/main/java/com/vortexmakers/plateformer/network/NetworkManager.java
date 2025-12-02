@@ -156,12 +156,11 @@ public class NetworkManager {
         // CRÉATION DES PLATFORM SERVEUR
         createServerPlatforms();
 
-        // ✅ AJOUT: Envoyer l'état des plateformes
-        sendPlatformStateToAll();
-        sendCollectibleStateToAll();
-
-        // ✅ CORRECTION: Envoyer immédiatement l'état des collectibles
-        sendCollectibleStateToAll();
+//        // ✅ AJOUT: Envoyer l'état des plateformes
+//        sendPlatformStateToAll();
+//
+//        // ✅ CORRECTION: Envoyer immédiatement l'état des collectibles
+//        sendCollectibleStateToAll();
 
         System.out.println("🎯 Monde serveur initialisé avec " + serverCollectibles.size() + " collectibles et " + serverPlatforms.size() + " plateformes");
     }
@@ -619,7 +618,7 @@ public class NetworkManager {
 
         GameStateMessage.PlayerData playerData = new GameStateMessage.PlayerData(
             message.startX, message.startY,
-            0, 0, false, message.playerName
+            0, 0, true, message.playerName // ✅ CORRECTION : Déjà grounded
         );
         connectedPlayers.put(newPlayerId, playerData);
 
@@ -637,8 +636,28 @@ public class NetworkManager {
             }
         }
 
-        // ✅ NOUVEAU : Envoyer l'état initial DANS L'ORDRE GARANTI
-        sendInitialGameStateToPlayer(connection);
+        // Envoyer les joueurs existants au nouveau joueur
+        for (Map.Entry<Integer, GameStateMessage.PlayerData> entry : connectedPlayers.entrySet()) {
+            if (entry.getKey() != newPlayerId) {
+                PlayerJoinMessage existingPlayerMsg = new PlayerJoinMessage(
+                    entry.getKey(),
+                    entry.getValue().playerName,
+                    entry.getValue().x,
+                    entry.getValue().y
+                );
+                connection.sendTCP(existingPlayerMsg);
+            }
+        }
+
+        // ✅ CORRECTION : Envoyer l'état initial avec un DÉLAI
+        new Thread(() -> {
+            try {
+                Thread.sleep(200); // Attendre que GameScreen soit créé
+                sendInitialGameStateToPlayer(connection);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }).start();
 
         System.out.println("🎮 Nouveau joueur: " + message.playerName + " (ID: " + newPlayerId + ")");
     }

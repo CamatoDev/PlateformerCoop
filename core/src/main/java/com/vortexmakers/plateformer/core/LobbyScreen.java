@@ -207,8 +207,6 @@ public class LobbyScreen implements Screen, NetworkListener {
         batch.end();
     }
 
-    // IMPLÉMENTATION NETWORKLISTENER ===================
-
     // IMPLÉMENTATION NETWORKLISTENER
     @Override
     public void onConnectedToServer() {

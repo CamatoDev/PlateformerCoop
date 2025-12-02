@@ -21,6 +21,10 @@ public class ServerPlayer {
     // Pour collisions
     private Rectangle bounds;
 
+    // ✅ NOUVEAU : Compteur pour garder l'input de saut
+    private int jumpBufferFrames = 0;
+    private static final int JUMP_BUFFER_DURATION = 3; // Garder pendant 3 frames (~50ms)
+
     public ServerPlayer(float startX, float startY, int playerId) {
         this.x = startX;
         this.y = startY;
@@ -47,11 +51,10 @@ public class ServerPlayer {
      * APPLIQUER LA PHYSIQUE SERVEUR AVEC GRAVITÉ CORRECTE
      */
     public void applyServerPhysics(float delta) {
-        // ✅ GRAVITÉ CONDITIONNELLE STRICTE
+        // GRAVITÉ
         if (!isGrounded) {
             velocityY += Constants.GRAVITY * delta;
         } else {
-            // ✅ CORRECTION : Forcer vélocité Y à exactement 0 au sol
             velocityY = 0;
         }
 
@@ -77,14 +80,26 @@ public class ServerPlayer {
             }
         }
 
-        // ✅ SAUT AVEC VÉRIFICATION STRICTE
-        if (currentJumpPressed && isGrounded) {
-            velocityY = Constants.JUMP_FORCE;
-            isGrounded = false; // Décoller immédiatement
-            currentJumpPressed = false;
+        // ✅ CORRECTION : Gérer le buffer de saut
+        if (currentJumpPressed) {
+            jumpBufferFrames = JUMP_BUFFER_DURATION; // Activer le buffer
+            currentJumpPressed = false; // Consommer l'input immédiatement
         }
 
-        // ✅ APPLICATION DU MOUVEMENT
+        // ✅ NOUVEAU : Décrémenter le buffer
+        if (jumpBufferFrames > 0) {
+            jumpBufferFrames--;
+        }
+
+        // ✅ CORRECTION : Saut avec buffer
+        if (jumpBufferFrames > 0 && isGrounded) {
+            velocityY = Constants.JUMP_FORCE;
+            isGrounded = false;
+            jumpBufferFrames = 0; // Consommer le buffer
+            System.out.println("🚀 Saut exécuté pour joueur " + playerId);
+        }
+
+        // APPLICATION DU MOUVEMENT
         x += velocityX * delta;
         y += velocityY * delta;
 

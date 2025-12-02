@@ -44,11 +44,9 @@ public class GameScreen implements Screen, NetworkListener {
     // Score du joueur
     private int playerScore;
 
-    //private Array<Platform> platforms;
-//    private Array<Collectible> collectibles;
-
     // ✅ MODIFICATION: Utiliser Map pour les plateformes
     private Map<Integer, Platform> clientPlatforms;
+    private boolean jumpInputCaptured = false;
     private int nextPlatformId = 0;
 
     // COLLECTIBLES CLIENT ==============================
@@ -76,6 +74,10 @@ public class GameScreen implements Screen, NetworkListener {
 
     private boolean platformsReceived = false;
     private boolean gameReady = false;
+
+    // ✅ NOUVEAU : Timer pour éviter la création du joueur fantôme
+    private float idConfirmationTimer = 0f;
+    private static final float ID_CONFIRMATION_DELAY = 0.5f; // 500ms
 
     public GameScreen(PlateformerGame game, NetworkManager networkManager) {
         System.out.println("🎮 CREATION GameScreen - ID: " + networkManager.getLocalPlayerId());
@@ -183,13 +185,16 @@ public class GameScreen implements Screen, NetworkListener {
      * METTRE À JOUR LE JOUEUR LOCAL (inputs seulement)
      */
     private void update(float delta) {
-        // ✅ CORRECTION: Mettre à jour l'animation même sans physique locale
+        // ✅ NOUVEAU : Incrémenter le timer
+        idConfirmationTimer += delta;
+
+        // Mettre à jour l'animation
         localPlayer.updateAnimation(delta);
 
-        // ✅ CORRECTION: Envoyer les inputs même si on ne fait pas la physique locale
+        // Envoyer les inputs
         sendNetworkUpdates(delta);
 
-        // ✅ CORRECTION: Mettre à jour les joueurs distants
+        // Mettre à jour les joueurs distants
         updateRemotePlayers(delta);
     }
 
@@ -203,6 +208,13 @@ public class GameScreen implements Screen, NetworkListener {
      * ENVOYER LES INPUTS BRUTS AU SERVEUR
      */
     private void sendNetworkUpdates(float delta) {
+        // ✅ NOUVEAU : Capturer le saut CHAQUE FRAME (pas seulement au moment d'envoyer)
+        if (Gdx.input.isKeyJustPressed(Input.Keys.SPACE) ||
+            Gdx.input.isKeyJustPressed(Input.Keys.W) ||
+            Gdx.input.isKeyJustPressed(Input.Keys.UP)) {
+            jumpInputCaptured = true;
+        }
+
         networkUpdateTimer += delta;
 
         if (networkUpdateTimer >= Constants.NETWORK_UPDATE_INTERVAL) {
@@ -212,11 +224,11 @@ public class GameScreen implements Screen, NetworkListener {
                 // RÉCUPÉRER LES INPUTS BRUTS
                 boolean leftPressed = Gdx.input.isKeyPressed(Input.Keys.LEFT) || Gdx.input.isKeyPressed(Input.Keys.A);
                 boolean rightPressed = Gdx.input.isKeyPressed(Input.Keys.RIGHT) || Gdx.input.isKeyPressed(Input.Keys.D);
-                boolean jumpPressed = Gdx.input.isKeyJustPressed(Input.Keys.SPACE) ||
-                    Gdx.input.isKeyJustPressed(Input.Keys.W) ||
-                    Gdx.input.isKeyJustPressed(Input.Keys.UP);
 
-                // ✅ CORRECTION AVEC GESTION DE DÉBORDEMENT
+                // ✅ CORRECTION : Utiliser le flag capturé
+                boolean jumpPressed = jumpInputCaptured;
+                jumpInputCaptured = false; // Reset après envoi
+
                 int currentSequence = inputSequence;
                 inputSequence = (inputSequence + 1) % Constants.MAX_SEQUENCE;
 
@@ -224,7 +236,7 @@ public class GameScreen implements Screen, NetworkListener {
                     leftPressed,
                     rightPressed,
                     jumpPressed,
-                    currentSequence  // ✅ Utiliser la séquence actuelle
+                    currentSequence
                 );
             }
         }
@@ -395,13 +407,27 @@ public class GameScreen implements Screen, NetworkListener {
         }
     }
 
+
     @Override
     public void onPlayerJoined(PlayerJoinMessage message) {
         Gdx.app.postRunnable(() -> {
-            System.out.println("Joueur rejoint: " + message.playerName + " (ID: " + message.playerId + ")");
+            System.out.println("📥 Joueur rejoint: " + message.playerName + " (ID: " + message.playerId + "), Mon ID: " + localPlayerId);
 
-            // Ne pas créer de joueur pour nous-même
+            // ✅ CORRECTION PRINCIPALE : Vérification stricte avec timer
             if (message.playerId == localPlayerId) {
+                System.out.println("⚠️ C'est notre propre joueur, on ne crée pas de remote player");
+                return;
+            }
+
+            // ✅ NOUVEAU : Ignorer les messages pendant le délai d'initialisation
+            if (idConfirmationTimer < ID_CONFIRMATION_DELAY) {
+                System.out.println("⚠️ Message ignoré pendant l'initialisation (timer: " + idConfirmationTimer + "s)");
+                return;
+            }
+
+            // Vérifier si le joueur existe déjà
+            if (remotePlayers.containsKey(message.playerId)) {
+                System.out.println("⚠️ Joueur " + message.playerId + " déjà existant, pas de recréation");
                 return;
             }
 
@@ -409,7 +435,7 @@ public class GameScreen implements Screen, NetworkListener {
             Player remotePlayer = new Player(message.startX, message.startY);
             remotePlayers.put(message.playerId, remotePlayer);
 
-            System.out.println("Nombre de joueurs distants: " + remotePlayers.size());
+            System.out.println("✅ Joueur distant créé - Total: " + remotePlayers.size());
         });
     }
 
