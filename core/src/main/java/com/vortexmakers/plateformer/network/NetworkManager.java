@@ -618,7 +618,7 @@ public class NetworkManager {
 
         GameStateMessage.PlayerData playerData = new GameStateMessage.PlayerData(
             message.startX, message.startY,
-            0, 0, true, message.playerName // ✅ CORRECTION : Déjà grounded
+            0, 0, true, message.playerName
         );
         connectedPlayers.put(newPlayerId, playerData);
 
@@ -626,17 +626,12 @@ public class NetworkManager {
         serverPlayer.isGrounded = true;
         serverPlayers.put(newPlayerId, serverPlayer);
 
-        // Confirmation au joueur
+        // ✅ ÉTAPE 1 : Confirmation au joueur (TCP pour garantir l'ordre)
         connection.sendTCP(message);
+        System.out.println("📤 [SERVEUR] Confirmation envoyée à joueur " + newPlayerId);
 
-        // Diffuser aux autres
-        for (Connection conn : server.getConnections()) {
-            if (conn.getID() != newPlayerId) {
-                conn.sendTCP(message);
-            }
-        }
-
-        // Envoyer les joueurs existants au nouveau joueur
+        // ✅ ÉTAPE 2 : Envoyer les joueurs existants au nouveau joueur AVANT de broadcaster
+        System.out.println("📤 [SERVEUR] Envoi des " + (connectedPlayers.size() - 1) + " joueurs existants à " + newPlayerId);
         for (Map.Entry<Integer, GameStateMessage.PlayerData> entry : connectedPlayers.entrySet()) {
             if (entry.getKey() != newPlayerId) {
                 PlayerJoinMessage existingPlayerMsg = new PlayerJoinMessage(
@@ -646,20 +641,23 @@ public class NetworkManager {
                     entry.getValue().y
                 );
                 connection.sendTCP(existingPlayerMsg);
+                System.out.println("  → Envoi joueur existant ID: " + entry.getKey() + " à " + newPlayerId);
             }
         }
 
-        // ✅ CORRECTION : Envoyer l'état initial avec un DÉLAI
-        new Thread(() -> {
-            try {
-                Thread.sleep(200); // Attendre que GameScreen soit créé
-                sendInitialGameStateToPlayer(connection);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
+        // ✅ ÉTAPE 3 : Diffuser le nouveau joueur aux AUTRES (pas à lui-même)
+        System.out.println("📤 [SERVEUR] Broadcast du nouveau joueur " + newPlayerId + " aux autres");
+        for (Connection conn : server.getConnections()) {
+            if (conn.getID() != newPlayerId) {
+                conn.sendTCP(message);
+                System.out.println("  → Broadcast à joueur ID: " + conn.getID());
             }
-        }).start();
+        }
 
-        System.out.println("🎮 Nouveau joueur: " + message.playerName + " (ID: " + newPlayerId + ")");
+        // ✅ ÉTAPE 4 : Envoyer l'état initial (plateformes, collectibles)
+        sendInitialGameStateToPlayer(connection);
+
+        System.out.println("🎮 [SERVEUR] Nouveau joueur: " + message.playerName + " (ID: " + newPlayerId + ") - Total: " + connectedPlayers.size());
     }
 
     /**

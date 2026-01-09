@@ -75,10 +75,6 @@ public class GameScreen implements Screen, NetworkListener {
     private boolean platformsReceived = false;
     private boolean gameReady = false;
 
-    // ✅ NOUVEAU : Timer pour éviter la création du joueur fantôme
-    private float idConfirmationTimer = 0f;
-    private static final float ID_CONFIRMATION_DELAY = 0.5f; // 500ms
-
     public GameScreen(PlateformerGame game, NetworkManager networkManager) {
         System.out.println("🎮 CREATION GameScreen - ID: " + networkManager.getLocalPlayerId());
         this.game = game;
@@ -185,8 +181,6 @@ public class GameScreen implements Screen, NetworkListener {
      * METTRE À JOUR LE JOUEUR LOCAL (inputs seulement)
      */
     private void update(float delta) {
-        // ✅ NOUVEAU : Incrémenter le timer
-        idConfirmationTimer += delta;
 
         // Mettre à jour l'animation
         localPlayer.updateAnimation(delta);
@@ -411,31 +405,34 @@ public class GameScreen implements Screen, NetworkListener {
     @Override
     public void onPlayerJoined(PlayerJoinMessage message) {
         Gdx.app.postRunnable(() -> {
-            System.out.println("📥 Joueur rejoint: " + message.playerName + " (ID: " + message.playerId + "), Mon ID: " + localPlayerId);
+            System.out.println("📥 [CLIENT " + localPlayerId + "] Joueur rejoint: " + message.playerName + " (ID: " + message.playerId + ")");
 
-            // ✅ CORRECTION PRINCIPALE : Vérification stricte avec timer
+            // ✅ CAS 1 : C'est notre propre message de confirmation d'ID
+            if (localPlayerId == -1 && message.playerId != -1) {
+                // C'est forcément NOTRE confirmation (on n'avait pas d'ID avant)
+                System.out.println("✅ [CLIENT] Confirmation de notre ID: " + message.playerId);
+                localPlayerId = message.playerId;
+                return; // Ne pas créer de joueur pour nous-même
+            }
+
+            // ✅ CAS 2 : C'est notre propre ID (message en double)
             if (message.playerId == localPlayerId) {
-                System.out.println("⚠️ C'est notre propre joueur, on ne crée pas de remote player");
+                System.out.println("⚠️ [CLIENT] Notre propre ID reçu en double, ignoré");
                 return;
             }
 
-            // ✅ NOUVEAU : Ignorer les messages pendant le délai d'initialisation
-            if (idConfirmationTimer < ID_CONFIRMATION_DELAY) {
-                System.out.println("⚠️ Message ignoré pendant l'initialisation (timer: " + idConfirmationTimer + "s)");
-                return;
-            }
-
-            // Vérifier si le joueur existe déjà
+            // ✅ CAS 3 : Le joueur existe déjà (doublon)
             if (remotePlayers.containsKey(message.playerId)) {
-                System.out.println("⚠️ Joueur " + message.playerId + " déjà existant, pas de recréation");
+                System.out.println("⚠️ [CLIENT] Joueur " + message.playerId + " existe déjà, ignoré");
                 return;
             }
 
-            // Créer un nouveau joueur distant
+            // ✅ CAS 4 : C'est un nouveau joueur distant (valide)
+            System.out.println("✅ [CLIENT] Création joueur distant ID: " + message.playerId);
             Player remotePlayer = new Player(message.startX, message.startY);
             remotePlayers.put(message.playerId, remotePlayer);
 
-            System.out.println("✅ Joueur distant créé - Total: " + remotePlayers.size());
+            System.out.println("📊 [CLIENT] Total joueurs distants: " + remotePlayers.size());
         });
     }
 
