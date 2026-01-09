@@ -50,6 +50,9 @@ public class LobbyScreen implements Screen, NetworkListener {
     private TextButton joinButton;
     private String statusMessage = "Prêt à jouer";
 
+    // ✅ NOUVEAU : Flag pour vérifier la connexion
+    private boolean connectionCheckStarted = false;
+
     public LobbyScreen(PlateformerGame game) {
         this.game = game;
         // ✅ UTILISATION DU SINGLETON
@@ -124,6 +127,8 @@ public class LobbyScreen implements Screen, NetworkListener {
                 Thread.sleep(500);
                 Gdx.app.postRunnable(() -> {
                     statusMessage = "Connexion au serveur local...";
+                    // ✅ NOUVEAU : Activer la vérification
+                    connectionCheckStarted = true;
                     networkManager.connectToHost("localhost");
                 });
             } catch (InterruptedException e) {
@@ -142,6 +147,9 @@ public class LobbyScreen implements Screen, NetworkListener {
         statusMessage = "Connexion à " + ip + "...";
         hostButton.setDisabled(true);
         joinButton.setDisabled(true);
+
+        // ✅ NOUVEAU : Activer la vérification
+        connectionCheckStarted = true;
 
         networkManager.connectToHost(ip);
     }
@@ -197,6 +205,17 @@ public class LobbyScreen implements Screen, NetworkListener {
         Gdx.gl.glClearColor(0.1f, 0.1f, 0.2f, 1);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
+        // ✅ NOUVEAU : Vérifier manuellement si connecté
+        if (connectionCheckStarted && networkManager.isConnected()) {
+            // Si connecté mais GameScreen pas encore créé, le créer maintenant
+            if (game.getScreen() == this) {
+                System.out.println("✅ [LOBBY] Connexion détectée manuellement, création GameScreen");
+                statusMessage = "Connecté! Chargement du jeu...";
+                game.setScreen(new GameScreen(game, networkManager));
+                return; // Important : sortir immédiatement
+            }
+        }
+
         // Mise à jour stage
         stage.act(delta);
         stage.draw();
@@ -211,8 +230,11 @@ public class LobbyScreen implements Screen, NetworkListener {
     @Override
     public void onConnectedToServer() {
         Gdx.app.postRunnable(() -> {
-            statusMessage = "Connecté! Chargement du jeu...";
-            game.setScreen(new GameScreen(game, networkManager));
+            System.out.println("✅ [LOBBY] onConnectedToServer() appelé");
+            if (game.getScreen() == this) {
+                statusMessage = "Connecté! Chargement du jeu...";
+                game.setScreen(new GameScreen(game, networkManager));
+            }
         });
     }
 
