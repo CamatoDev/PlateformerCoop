@@ -9,6 +9,7 @@ import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.utils.Array;
 import com.vortexmakers.plateformer.entities.Collectible;
+import com.vortexmakers.plateformer.entities.FinishFlag;
 import com.vortexmakers.plateformer.entities.Player;
 import com.vortexmakers.plateformer.entities.Platform;
 import com.vortexmakers.plateformer.systems.PhysicsSystem;
@@ -18,9 +19,7 @@ import com.vortexmakers.plateformer.network.NetworkManager;
 import com.vortexmakers.plateformer.network.listeners.NetworkListener;
 import com.vortexmakers.plateformer.network.messages.*;
 
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
+import java.util.*;
 
 public class GameScreen implements Screen, NetworkListener {
     private final PlateformerGame game;
@@ -50,8 +49,13 @@ public class GameScreen implements Screen, NetworkListener {
     private boolean jumpInputCaptured = false;
     private int nextPlatformId = 0;
 
-    // COLLECTIBLES CLIENT ==============================
+    // COLLECTIBLES CLIENT
     private Map<Integer, Collectible> clientCollectibles;
+
+    // DRAPEAU DE FIN
+    private FinishFlag finishFlag;
+    private Set<Integer> playersWhoFinishedLevel;
+    private boolean allPlayersFinished = false;
 
     // SÉQUENCE D'INPUT POUR LA RÉCONCILIATION
     private int inputSequence = 0;
@@ -76,10 +80,10 @@ public class GameScreen implements Screen, NetworkListener {
     private boolean platformsReceived = false;
     private boolean gameReady = false;
 
-    // ✅ MODIFICATION : Le timer vient du serveur maintenant
+    // Le timer vient du serveur maintenant
     private float gameTimer = 0f;
     private float levelTimeLimit = 180f; // Valeur par défaut, sera écrasée par le serveur
-    private boolean timerStarted = false; // ✅ NOUVEAU
+    private boolean timerStarted = false;
     private BitmapFont uiFont;
     private int localPlayerScore = 0;
     private Map<Integer, Integer> remotePlayerScores; // Score de chaque joueur distant
@@ -127,6 +131,11 @@ public class GameScreen implements Screen, NetworkListener {
         this.clientPlatforms = new HashMap<>();
         this.clientCollectibles = new HashMap<>();
 
+        // Initialiser
+        this.playersWhoFinishedLevel = new HashSet<>();
+        // Le drapeau sera créé quand on recevra sa position du serveur
+
+
         playerScore = 0;
 
         physicsSystem = new PhysicsSystem();
@@ -170,11 +179,16 @@ public class GameScreen implements Screen, NetworkListener {
 
         renderCollectibles();
 
+        // Dessiner le drapeau
+        if (finishFlag != null) {
+            finishFlag.render(batch);
+        }
+
         renderPlayers();
 
         batch.end();
 
-        // ✅ NOUVEAU : RENDU DE L'UI (par-dessus tout)
+        // RENDU DE L'UI (par-dessus tout)
         renderUI();
 
         // Mettre à jour la caméra
@@ -203,7 +217,12 @@ public class GameScreen implements Screen, NetworkListener {
         // Vérifier si le temps est écoulé
         if (gameTimer >= levelTimeLimit) {
             // TODO : Déclencher Game Over (Phase 4)
-            System.out.println("⏰ Temps écoulé ! Game Over");
+            System.out.println("Temps écoulé ! Game Over");
+        }
+
+        // Mettre à jour le drapeau
+        if (finishFlag != null) {
+            finishFlag.update(delta);
         }
 
         // Mettre à jour l'animation
@@ -410,7 +429,7 @@ public class GameScreen implements Screen, NetworkListener {
             if (collectible.isFullyCollected()) {
                 collectible.dispose();
                 iterator.remove();
-                System.out.println("🗑️ Collectible supprimé côté client");
+                System.out.println("Collectible supprimé côté client");
             }
         }
     }
@@ -481,36 +500,36 @@ public class GameScreen implements Screen, NetworkListener {
             // ✅ CAS 1 : C'est notre propre message de confirmation d'ID
             if (localPlayerId == -1 && message.playerId != -1) {
                 // C'est forcément NOTRE confirmation (on n'avait pas d'ID avant)
-                System.out.println("✅ [CLIENT] Confirmation de notre ID: " + message.playerId);
+                System.out.println("[CLIENT] Confirmation de notre ID: " + message.playerId);
                 localPlayerId = message.playerId;
                 return; // Ne pas créer de joueur pour nous-même
             }
 
             // ✅ CAS 2 : C'est notre propre ID (message en double)
             if (message.playerId == localPlayerId) {
-                System.out.println("⚠️ [CLIENT] Notre propre ID reçu en double, ignoré");
+                System.out.println("[CLIENT] Notre propre ID reçu en double, ignoré");
                 return;
             }
 
             // ✅ CAS 3 : Le joueur existe déjà (doublon)
             if (remotePlayers.containsKey(message.playerId)) {
-                System.out.println("⚠️ [CLIENT] Joueur " + message.playerId + " existe déjà, ignoré");
+                System.out.println("[CLIENT] Joueur " + message.playerId + " existe déjà, ignoré");
                 return;
             }
 
             // ✅ CAS 4 : C'est un nouveau joueur distant (valide)
-            System.out.println("✅ [CLIENT] Création joueur distant ID: " + message.playerId);
+            System.out.println("[CLIENT] Création joueur distant ID: " + message.playerId);
             Player remotePlayer = new Player(message.startX, message.startY);
             remotePlayers.put(message.playerId, remotePlayer);
 
-            System.out.println("📊 [CLIENT] Total joueurs distants: " + remotePlayers.size());
+            System.out.println("[CLIENT] Total joueurs distants: " + remotePlayers.size());
         });
     }
 
     @Override
     public void onPlayerLeft(PlayerLeaveMessage message) {
         Gdx.app.postRunnable(() -> {
-            System.out.println("👋 Joueur parti: " + message.playerId);
+            System.out.println("Joueur parti: " + message.playerId);
 
             // Supprimer le joueur distant
             remotePlayers.remove(message.playerId);
@@ -530,7 +549,7 @@ public class GameScreen implements Screen, NetworkListener {
                 GameStateMessage.PlayerData playerData = entry.getValue();
 
                 if (playerId == localPlayerId) {
-                    // ✅ FORCER la mise à jour de l'état grounded pour l'animation
+                    // FORCER la mise à jour de l'état grounded pour l'animation
                     localPlayer.setGrounded(playerData.isGrounded);
                     localPlayer.setPosition(playerData.x, playerData.y);
                     localPlayer.setVelocity(playerData.velocityX, playerData.velocityY);
@@ -549,7 +568,7 @@ public class GameScreen implements Screen, NetworkListener {
     @Override
     public void onPlatformStateReceived(PlatformStateMessage message) {
         Gdx.app.postRunnable(() -> {
-            System.out.println("📦 CLIENT: Réception " + message.platforms.size() + " plateformes");
+            System.out.println("CLIENT: Réception " + message.platforms.size() + " plateformes");
 
             clientPlatforms.clear();
 
@@ -607,6 +626,35 @@ public class GameScreen implements Screen, NetworkListener {
                         }
                     }
                 }
+            }
+        });
+    }
+
+    /**
+     * RÉCEPTION DE L'ÉTAT DU DRAPEAU
+     */
+    @Override
+    public void onFinishFlagStateReceived(FinishFlagStateMessage message) {
+        Gdx.app.postRunnable(() -> {
+            // Créer le drapeau si pas encore fait
+            if (finishFlag == null) {
+                finishFlag = new FinishFlag(message.flagX, message.flagY);
+                System.out.println("[CLIENT] Drapeau créé à X: " + message.flagX + ", Y: " + message.flagY);
+            }
+
+            // Mettre à jour la liste des joueurs qui ont fini
+            playersWhoFinishedLevel = new HashSet<>(message.playersWhoFinished);
+            allPlayersFinished = message.allPlayersFinished;
+
+            // Log si on a fini
+            if (playersWhoFinishedLevel.contains(localPlayerId)) {
+                System.out.println("[CLIENT] Vous avez atteint le drapeau !");
+            }
+
+            // Si tous ont fini, passer à l'écran de victoire
+            if (allPlayersFinished) {
+                System.out.println("[CLIENT] TOUS LES JOUEURS ONT FINI ! Transition vers LevelWinScreen...");
+                // ✅ TODO : Transition vers LevelWinScreen (prochaine étape)
             }
         });
     }
@@ -761,6 +809,12 @@ public class GameScreen implements Screen, NetworkListener {
             }
         }
         clientCollectibles.clear();
+
+        // Nettoyer le drapeau
+        if (finishFlag != null) {
+            finishFlag.dispose();
+            finishFlag = null;
+        }
 
         System.out.println("GameScreen nettoyé");
     }

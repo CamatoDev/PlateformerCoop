@@ -289,6 +289,11 @@ public class LobbyScreen implements Screen, NetworkListener {
         // Pas utilisé dans le lobby
     }
 
+    @Override
+    public void onFinishFlagStateReceived(FinishFlagStateMessage message) {
+        // Pas utilisé dans le lobby
+    }
+
     // AUTRES MÉTHODES SCREEN ===========================
 
     @Override
