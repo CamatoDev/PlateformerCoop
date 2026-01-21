@@ -5,6 +5,7 @@ import com.badlogic.gdx.Input;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.utils.Array;
 import com.vortexmakers.plateformer.entities.Collectible;
@@ -44,7 +45,7 @@ public class GameScreen implements Screen, NetworkListener {
     // Score du joueur
     private int playerScore;
 
-    // ✅ MODIFICATION: Utiliser Map pour les plateformes
+    // Utiliser Map pour les plateformes
     private Map<Integer, Platform> clientPlatforms;
     private boolean jumpInputCaptured = false;
     private int nextPlatformId = 0;
@@ -75,10 +76,17 @@ public class GameScreen implements Screen, NetworkListener {
     private boolean platformsReceived = false;
     private boolean gameReady = false;
 
+    // ✅ NOUVEAU : UI - Timer et Scores
+    private float gameTimer = 0f;
+    private float levelTimeLimit = 180f; // 3 minutes (180 secondes)
+    private BitmapFont uiFont;
+    private int localPlayerScore = 0;
+    private Map<Integer, Integer> remotePlayerScores; // Score de chaque joueur distant
+
     public GameScreen(PlateformerGame game, NetworkManager networkManager) {
         System.out.println("🎮 CREATION GameScreen - ID: " + networkManager.getLocalPlayerId());
         this.game = game;
-        // ✅ UTILISATION DU SINGLETON
+        // UTILISATION DU SINGLETON
         this.networkManager = NetworkManager.getInstance();
         this.networkManager.setNetworkListener(this);
 
@@ -87,6 +95,9 @@ public class GameScreen implements Screen, NetworkListener {
 
         // INITIALISATION DES JOUEURS
         this.remotePlayers = new HashMap<>();
+
+        // Initialiser les scores
+        this.remotePlayerScores = new HashMap<>();
 
         // INITIALISATION ASSETMANAGER
         this.assets = AssetManager.getInstance();
@@ -99,6 +110,10 @@ public class GameScreen implements Screen, NetworkListener {
         uiCamera.setToOrtho(false, Constants.SCREEN_WIDTH, Constants.SCREEN_HEIGHT);
 
         batch = new SpriteBatch();
+
+        // Créer la police pour l'UI
+        uiFont = new BitmapFont();
+        uiFont.getData().setScale(2.0f); // Texte 2x plus grand
 
         // Récuperation de textures du background
         this.backgroundSky = assets.getBackgroundSky();
@@ -120,12 +135,12 @@ public class GameScreen implements Screen, NetworkListener {
     public void render(float delta) {
         // Vérifier connexion
         if (!networkManager.isConnected()) {
-            System.out.println("⚠️ Plus connecté au serveur, retour au menu...");
+            System.out.println("Plus connecté au serveur, retour au menu...");
             game.setScreen(new LobbyScreen(game));
             return;
         }
 
-        // ✅ NOUVEAU : Attendre que les plateformes soient reçues
+        // Attendre que les plateformes soient reçues
         if (!gameReady) {
             // Afficher un écran de chargement simple
             batch.begin();
@@ -142,14 +157,14 @@ public class GameScreen implements Screen, NetworkListener {
         // Mise à jour de la caméra
         updateCamera();
 
-        // Rendu
+        // Rendu (avec la caméra de jeu)
         batch.setProjectionMatrix(gameCamera.combined);
         batch.begin();
 
         // DESSIN DU BACKGROUND
         renderBackground();
 
-        // ✅ MODIFICATION: Dessiner les plateformes depuis la Map
+        // Dessiner les plateformes depuis la Map
         renderPlatforms();
 
         renderCollectibles();
@@ -157,6 +172,9 @@ public class GameScreen implements Screen, NetworkListener {
         renderPlayers();
 
         batch.end();
+
+        // ✅ NOUVEAU : RENDU DE L'UI (par-dessus tout)
+        renderUI();
 
         // Mettre à jour la caméra
         updateCamera();
@@ -181,6 +199,14 @@ public class GameScreen implements Screen, NetworkListener {
      * METTRE À JOUR LE JOUEUR LOCAL (inputs seulement)
      */
     private void update(float delta) {
+        // Incrémenter le timer
+        gameTimer += delta;
+
+        // Vérifier si le temps est écoulé
+        if (gameTimer >= levelTimeLimit) {
+            // TODO : Déclencher Game Over (Phase 4)
+            System.out.println("⏰ Temps écoulé ! Game Over");
+        }
 
         // Mettre à jour l'animation
         localPlayer.updateAnimation(delta);
@@ -401,6 +427,49 @@ public class GameScreen implements Screen, NetworkListener {
         }
     }
 
+    /**
+     * RENDU DE L'UI (Timer, Scores)
+     */
+    private void renderUI() {
+        // ✅ Utiliser la caméra UI (fixe à l'écran)
+        batch.setProjectionMatrix(uiCamera.combined);
+        batch.begin();
+
+        // ✅ TIMER AU CENTRE EN HAUT
+        int timeRemaining = (int) (levelTimeLimit - gameTimer);
+        String timerText = formatTime(timeRemaining);
+
+        // Centrer le texte
+        float timerX = (Constants.SCREEN_WIDTH - timerText.length() * 15) / 2f;
+        uiFont.draw(batch, timerText, timerX, Constants.SCREEN_HEIGHT - 20);
+
+        // ✅ SCORE DU JOUEUR LOCAL (en haut à gauche)
+        String localScoreText = "You: " + localPlayerScore + " coins";
+        uiFont.draw(batch, localScoreText, 20, Constants.SCREEN_HEIGHT - 20);
+
+        // ✅ SCORES DES JOUEURS DISTANTS (en haut à droite)
+        int yOffset = 0;
+        for (Map.Entry<Integer, Integer> entry : remotePlayerScores.entrySet()) {
+            String remoteScoreText = "Player " + entry.getKey() + ": " + entry.getValue() + " coins";
+            float textWidth = remoteScoreText.length() * 15; // Approximation
+            uiFont.draw(batch, remoteScoreText,
+                Constants.SCREEN_WIDTH - textWidth - 20,
+                Constants.SCREEN_HEIGHT - 20 - yOffset);
+            yOffset += 30;
+        }
+
+        batch.end();
+    }
+
+    /**
+     * FORMATER LE TEMPS (MM:SS)
+     */
+    private String formatTime(int seconds) {
+        int minutes = seconds / 60;
+        int secs = seconds % 60;
+        return String.format("%02d:%02d", minutes, secs);
+    }
+
 
     @Override
     public void onPlayerJoined(PlayerJoinMessage message) {
@@ -519,9 +588,21 @@ public class GameScreen implements Screen, NetworkListener {
                 }
 
                 if (collectible != null && collectibleData.collected) {
-                    // ✅ FORCER la collecte immédiate
+                    // FORCER la collecte immédiate
                     if (!collectible.isFullyCollected() && !collectible.isCollecting()) {
                         collectible.collect();
+
+                        // ✅ NOUVEAU : Mettre à jour le score
+                        if (collectibleData.collectedByPlayerId == localPlayerId) {
+                            localPlayerScore++;
+                            System.out.println("🪙 Score local: " + localPlayerScore);
+                        } else {
+                            remotePlayerScores.put(
+                                collectibleData.collectedByPlayerId,
+                                remotePlayerScores.getOrDefault(collectibleData.collectedByPlayerId, 0) + 1
+                            );
+                            System.out.println("🪙 Score joueur " + collectibleData.collectedByPlayerId + ": " + remotePlayerScores.get(collectibleData.collectedByPlayerId));
+                        }
                     }
                 }
             }
@@ -625,6 +706,12 @@ public class GameScreen implements Screen, NetworkListener {
             batch = null;
         }
 
+        // Disposer la police UI
+        if (uiFont != null) {
+            uiFont.dispose();
+            uiFont = null;
+        }
+
         // Nettoyage du joueur local
         if (localPlayer != null) {
             localPlayer.dispose();
@@ -655,6 +742,6 @@ public class GameScreen implements Screen, NetworkListener {
         }
         clientCollectibles.clear();
 
-        System.out.println("✅ GameScreen nettoyé");
+        System.out.println("GameScreen nettoyé");
     }
 }
