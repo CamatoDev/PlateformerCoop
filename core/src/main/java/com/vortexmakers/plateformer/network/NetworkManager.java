@@ -63,6 +63,11 @@ public class NetworkManager {
     // Pour suivre la dernière séquence reçue de chaque joueur
     private Map<Integer, Integer> lastReceivedSequence;
 
+    // Timer du jeu (géré par le serveur)
+    private float serverGameTimer = 0f;
+    private float serverTimeLimit = 180f; // 3 minutes
+    private boolean serverTimerStarted = false;
+
     // CONSTRUCTEUR PRIVÉ
     private NetworkManager() {
         this.connectedPlayers = new HashMap<>();
@@ -225,8 +230,24 @@ public class NetworkManager {
         if (serverUpdateTimer >= Constants.SERVER_UPDATE_INTERVAL) {
             serverUpdateTimer = 0f;
 
-            // ✅ CORRECTION: Toujours mettre à jour et envoyer, même sans joueurs
+            // Toujours mettre à jour et envoyer, même sans joueurs
             if (!serverPlayers.isEmpty()) {
+                // Démarrer le timer dès qu'il y a des joueurs
+                if (!serverTimerStarted) {
+                    serverTimerStarted = true;
+                    System.out.println("⏰ [SERVEUR] Timer démarré !");
+                }
+
+                // Incrémenter le timer du serveur
+                if (serverTimerStarted) {
+                    serverGameTimer += Constants.SERVER_UPDATE_INTERVAL;
+
+                    // Vérifier si le temps est écoulé
+                    if (serverGameTimer >= serverTimeLimit) {
+                        System.out.println("⏰ [SERVEUR] Temps écoulé ! Game Over");
+                        // TODO : Envoyer message Game Over (Phase 4)
+                    }
+                }
                 // APPLIQUER LA PHYSIQUE À TOUS LES JOUEURS
                 for (ServerPlayer serverPlayer : serverPlayers.values()) {
                     serverPlayer.applyServerPhysics(Constants.SERVER_UPDATE_INTERVAL);
@@ -237,10 +258,15 @@ public class NetworkManager {
                 updateConnectedPlayersFromServer();
             }
 
-            // ✅ CORRECTION: Envoyer les états même sans joueurs (pour synchronisation initiale)
+            // Envoyer les états même sans joueurs (pour synchronisation initiale)
             sendGameStateToAll();
             //sendPlatformStateToAll();
             sendCollectibleStateToAll();
+
+            // ✅ NOUVEAU : Envoyer le timer toutes les secondes
+            if (serverTimerStarted && (int)serverGameTimer % 1 == 0) {
+                sendTimerStateToAll();
+            }
         }
     }
 
@@ -438,6 +464,26 @@ public class NetworkManager {
     }
 
     /**
+     * ENVOYER L'ÉTAT DU TIMER À TOUS LES CLIENTS
+     */
+    private void sendTimerStateToAll() {
+        try {
+            GameTimerMessage timerMessage = new GameTimerMessage(
+                serverGameTimer,
+                serverTimeLimit,
+                serverTimerStarted
+            );
+
+            if (server != null && server.getConnections().length > 0) {
+                server.sendToAllUDP(timerMessage);
+            }
+        } catch (Exception e) {
+            System.err.println("Erreur envoi timer: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    /**
      * ✅ NOUVEAU : Envoyer l'état initial à UN joueur spécifique dans l'ordre correct
      */
     private void sendInitialGameStateToPlayer(Connection connection) {
@@ -560,14 +606,17 @@ public class NetworkManager {
         kryo.register(GameStateMessage.PlayerData.class);
         kryo.register(PlayerLeaveMessage.class);
 
-        // ✅ AJOUT: Enregistrer CollectibleStateMessage et ses classes internes
+        // Enregistrer CollectibleStateMessage et ses classes internes
         kryo.register(CollectibleStateMessage.class);
         kryo.register(CollectibleStateMessage.CollectibleData.class);
         kryo.register(java.util.ArrayList.class); // Important pour la liste
 
-        // ✅ AJOUT: Plateformes
+        // Plateformes
         kryo.register(PlatformStateMessage.class);
         kryo.register(PlatformStateMessage.PlatformData.class);
+
+        // Timer
+        kryo.register(GameTimerMessage.class);
 
         // COLLECTIONS
         kryo.register(HashMap.class);
@@ -782,14 +831,19 @@ public class NetworkManager {
                 networkListener.onPlayerLeft((PlayerLeaveMessage) object);
             }
         } else if (object instanceof PlatformStateMessage) {
-            // ✅ AJOUT: Gérer les plateformes
+            // Gérer les plateformes
             if (networkListener != null) {
                 networkListener.onPlatformStateReceived((PlatformStateMessage) object);
             }
         }else if (object instanceof CollectibleStateMessage) {
-            // ✅ AJOUTER CE CAS :
+            // Gérer les collectible
             if (networkListener != null) {
                 networkListener.onCollectibleStateReceived((CollectibleStateMessage) object);
+            }
+        } else if (object instanceof GameTimerMessage) {
+            // Gérer le timer
+            if (networkListener != null) {
+                networkListener.onGameTimerReceived((GameTimerMessage) object);
             }
         }
     }

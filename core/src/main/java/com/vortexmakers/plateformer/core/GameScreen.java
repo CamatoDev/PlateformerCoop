@@ -76,9 +76,10 @@ public class GameScreen implements Screen, NetworkListener {
     private boolean platformsReceived = false;
     private boolean gameReady = false;
 
-    // ✅ NOUVEAU : UI - Timer et Scores
+    // ✅ MODIFICATION : Le timer vient du serveur maintenant
     private float gameTimer = 0f;
-    private float levelTimeLimit = 180f; // 3 minutes (180 secondes)
+    private float levelTimeLimit = 180f; // Valeur par défaut, sera écrasée par le serveur
+    private boolean timerStarted = false; // ✅ NOUVEAU
     private BitmapFont uiFont;
     private int localPlayerScore = 0;
     private Map<Integer, Integer> remotePlayerScores; // Score de chaque joueur distant
@@ -199,9 +200,6 @@ public class GameScreen implements Screen, NetworkListener {
      * METTRE À JOUR LE JOUEUR LOCAL (inputs seulement)
      */
     private void update(float delta) {
-        // Incrémenter le timer
-        gameTimer += delta;
-
         // Vérifier si le temps est écoulé
         if (gameTimer >= levelTimeLimit) {
             // TODO : Déclencher Game Over (Phase 4)
@@ -431,27 +429,31 @@ public class GameScreen implements Screen, NetworkListener {
      * RENDU DE L'UI (Timer, Scores)
      */
     private void renderUI() {
-        // ✅ Utiliser la caméra UI (fixe à l'écran)
         batch.setProjectionMatrix(uiCamera.combined);
         batch.begin();
 
-        // ✅ TIMER AU CENTRE EN HAUT
-        int timeRemaining = (int) (levelTimeLimit - gameTimer);
-        String timerText = formatTime(timeRemaining);
+        // TIMER AU CENTRE EN HAUT
+        String timerText;
+        if (!timerStarted) {
+            timerText = "En attente...";
+        } else {
+            int timeRemaining = (int) (levelTimeLimit - gameTimer);
+            if (timeRemaining < 0) timeRemaining = 0; // Éviter les négatifs
+            timerText = formatTime(timeRemaining);
+        }
 
-        // Centrer le texte
         float timerX = (Constants.SCREEN_WIDTH - timerText.length() * 15) / 2f;
         uiFont.draw(batch, timerText, timerX, Constants.SCREEN_HEIGHT - 20);
 
-        // ✅ SCORE DU JOUEUR LOCAL (en haut à gauche)
+        // SCORE DU JOUEUR LOCAL
         String localScoreText = "You: " + localPlayerScore + " coins";
         uiFont.draw(batch, localScoreText, 20, Constants.SCREEN_HEIGHT - 20);
 
-        // ✅ SCORES DES JOUEURS DISTANTS (en haut à droite)
+        // SCORES DES JOUEURS DISTANTS
         int yOffset = 0;
         for (Map.Entry<Integer, Integer> entry : remotePlayerScores.entrySet()) {
             String remoteScoreText = "Player " + entry.getKey() + ": " + entry.getValue() + " coins";
-            float textWidth = remoteScoreText.length() * 15; // Approximation
+            float textWidth = remoteScoreText.length() * 15;
             uiFont.draw(batch, remoteScoreText,
                 Constants.SCREEN_WIDTH - textWidth - 20,
                 Constants.SCREEN_HEIGHT - 20 - yOffset);
@@ -605,6 +607,24 @@ public class GameScreen implements Screen, NetworkListener {
                         }
                     }
                 }
+            }
+        });
+    }
+
+    /**
+     * RÉCEPTION DU TIMER DU SERVEUR
+     */
+    @Override
+    public void onGameTimerReceived(GameTimerMessage message) {
+        Gdx.app.postRunnable(() -> {
+            // ✅ SYNCHRONISER avec le serveur
+            gameTimer = message.currentTime;
+            levelTimeLimit = message.timeLimit;
+            timerStarted = message.timerStarted;
+
+            // Debug occasionnel
+            if ((int)gameTimer % 10 == 0) {
+                System.out.println("Timer synchronisé: " + formatTime((int)(levelTimeLimit - gameTimer)));
             }
         });
     }
