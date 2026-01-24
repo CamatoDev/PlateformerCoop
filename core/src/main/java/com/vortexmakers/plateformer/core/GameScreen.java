@@ -88,6 +88,9 @@ public class GameScreen implements Screen, NetworkListener {
     private int localPlayerScore = 0;
     private Map<Integer, Integer> remotePlayerScores; // Score de chaque joueur distant
 
+    private boolean transitioningToWin = false;
+    private boolean transitioningToGameOver = false;
+
     public GameScreen(PlateformerGame game, NetworkManager networkManager) {
         System.out.println("🎮 CREATION GameScreen - ID: " + networkManager.getLocalPlayerId());
         this.game = game;
@@ -215,9 +218,23 @@ public class GameScreen implements Screen, NetworkListener {
      */
     private void update(float delta) {
         // Vérifier si le temps est écoulé
-        if (gameTimer >= levelTimeLimit) {
-            // TODO : Déclencher Game Over (Phase 4)
-            System.out.println("Temps écoulé ! Game Over");
+        if (gameTimer >= levelTimeLimit && !transitioningToGameOver && !transitioningToWin) {
+            transitioningToGameOver = true;
+            System.out.println("⏰ Temps écoulé ! Game Over");
+
+            // Petit délai avant transition
+            new Thread(() -> {
+                try {
+                    Thread.sleep(500);
+                    Gdx.app.postRunnable(() -> {
+                        game.setScreen(new GameOverScreen(game, localPlayerScore, remotePlayerScores, gameTimer));
+                    });
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }).start();
+
+            return; // Arrêter la mise à jour
         }
 
         // Mettre à jour le drapeau
@@ -651,10 +668,22 @@ public class GameScreen implements Screen, NetworkListener {
                 System.out.println("[CLIENT] Vous avez atteint le drapeau !");
             }
 
-            // Si tous ont fini, passer à l'écran de victoire
-            if (allPlayersFinished) {
-                System.out.println("[CLIENT] TOUS LES JOUEURS ONT FINI ! Transition vers LevelWinScreen...");
-                // ✅ TODO : Transition vers LevelWinScreen (prochaine étape)
+            // ✅ NOUVELLE LOGIQUE : Si tous ont fini, passer à l'écran de victoire
+            if (allPlayersFinished && !transitioningToWin) {
+                transitioningToWin = true; // Empêcher les transitions multiples
+                System.out.println("[CLIENT] 🏆 TOUS LES JOUEURS ONT FINI ! Transition vers LevelWinScreen...");
+
+                // Petit délai pour que les joueurs voient qu'ils ont fini
+                new Thread(() -> {
+                    try {
+                        Thread.sleep(1000); // 1 seconde de délai
+                        Gdx.app.postRunnable(() -> {
+                            game.setScreen(new LevelWinScreen(game, localPlayerScore, remotePlayerScores));
+                        });
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }).start();
             }
         });
     }
@@ -815,6 +844,9 @@ public class GameScreen implements Screen, NetworkListener {
             finishFlag.dispose();
             finishFlag = null;
         }
+
+        transitioningToWin = false;
+        transitioningToGameOver = false;
 
         System.out.println("GameScreen nettoyé");
     }
