@@ -50,12 +50,12 @@ public class LobbyScreen implements Screen, NetworkListener {
     private TextButton joinButton;
     private String statusMessage = "Prêt à jouer";
 
-    // ✅ NOUVEAU : Flag pour vérifier la connexion
+    // Flag pour vérifier la connexion
     private boolean connectionCheckStarted = false;
 
     public LobbyScreen(PlateformerGame game) {
         this.game = game;
-        // ✅ UTILISATION DU SINGLETON
+        // UTILISATION DU SINGLETON
         this.networkManager = NetworkManager.getInstance();
         this.networkManager.setNetworkListener(this);
     }
@@ -127,7 +127,7 @@ public class LobbyScreen implements Screen, NetworkListener {
                 Thread.sleep(500);
                 Gdx.app.postRunnable(() -> {
                     statusMessage = "Connexion au serveur local...";
-                    // ✅ NOUVEAU : Activer la vérification
+                    // Activer la vérification
                     connectionCheckStarted = true;
                     networkManager.connectToHost("localhost");
                 });
@@ -148,7 +148,7 @@ public class LobbyScreen implements Screen, NetworkListener {
         hostButton.setDisabled(true);
         joinButton.setDisabled(true);
 
-        // ✅ NOUVEAU : Activer la vérification
+        // Activer la vérification
         connectionCheckStarted = true;
 
         networkManager.connectToHost(ip);
@@ -250,6 +250,16 @@ public class LobbyScreen implements Screen, NetworkListener {
 
     @Override
     public void onGameStateReceived(GameStateMessage message) {
+        // Pas utilisé dans le lobby
+    }
+
+    @Override
+    public void onSpikeStateReceived(SpikeStateMessage message) {
+        // Pas utilisé dans le lobby
+    }
+
+    @Override
+    public void onPlayerRespawned(PlayerRespawnMessage message) {
         // Pas utilisé dans le lobby
     }
 

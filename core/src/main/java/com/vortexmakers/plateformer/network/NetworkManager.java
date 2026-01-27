@@ -51,6 +51,9 @@ public class NetworkManager {
     private List<PlatformStateMessage.PlatformData> serverPlatforms;
     private int nextCollectibleId = 0;
 
+    // SPIKES SERVEUR
+    private List<SpikeStateMessage.SpikeData> serverSpikes;
+
     private boolean initialStateSent = false;
     // TIMING SERVEUR
     private float serverUpdateTimer = 0f;
@@ -77,6 +80,7 @@ public class NetworkManager {
         this.serverCollectibles = new ArrayList<>();
         this.serverPlatforms = new ArrayList<>();
         this.lastReceivedSequence = new HashMap<>();
+        this.serverSpikes = new ArrayList<>();
         System.out.println("NetworkManager créé (Singleton)");
     }
 
@@ -163,6 +167,9 @@ public class NetworkManager {
         // CRÉATION DES PLATFORM SERVEUR
         createServerPlatforms();
 
+        // CRÉATION DES SPIKES SERVEUR
+        createServerSpikes();
+
         // Initialiser le set de joueurs finis
         playersWhoFinished = new HashSet<>();
 
@@ -175,6 +182,38 @@ public class NetworkManager {
     }
 
     /**
+     * FAIRE RESPAWN UN JOUEUR
+     */
+    private void respawnPlayer(ServerPlayer serverPlayer) {
+        // Position de spawn (début du niveau)
+        float spawnX = 50f;
+        float spawnY = 300f;
+
+        // Téléporter le joueur
+        serverPlayer.x = spawnX;
+        serverPlayer.y = spawnY;
+        serverPlayer.velocityX = 0;
+        serverPlayer.velocityY = 0;
+        serverPlayer.isGrounded = false;
+        serverPlayer.updateBounds();
+
+        System.out.println("[SERVEUR] Joueur " + serverPlayer.playerId + " respawn à X: " + spawnX + ", Y: " + spawnY);
+
+        // Envoyer message de respawn à tous les clients
+        PlayerRespawnMessage respawnMessage = new PlayerRespawnMessage(
+            serverPlayer.playerId,
+            spawnX,
+            spawnY,
+            true // Invincible pendant 2 secondes
+        );
+
+        if (server != null) {
+            server.sendToAllTCP(respawnMessage);
+        }
+    }
+
+
+    /**
      * CRÉATION DES PLATEFORMES SUR LE SERVEUR
      */
     private void createServerPlatforms() {
@@ -184,11 +223,11 @@ public class NetworkManager {
         // Plateforme de base (sol)
         for (int i = 0; i < 15; i++) {
             serverPlatforms.add(new PlatformStateMessage.PlatformData(
-                i * 200, 0, 200, Constants.PLATFORM_HEIGHT, 0 // type 0 = terrain
+                i * 200, 0, 160, Constants.PLATFORM_HEIGHT, 0 // type 0 = terrain
             ));
         }
 
-        // Quelques plateformes de test
+        // Quelques plateformes
         serverPlatforms.add(new PlatformStateMessage.PlatformData(200, 80, 100, Constants.PLATFORM_HEIGHT, 0));
         serverPlatforms.add(new PlatformStateMessage.PlatformData(580, 150, 100, Constants.PLATFORM_HEIGHT, 0));
         serverPlatforms.add(new PlatformStateMessage.PlatformData(100, 160, 85, Constants.PLATFORM_HEIGHT, 0));
@@ -207,6 +246,25 @@ public class NetworkManager {
         serverPlatforms.add(new PlatformStateMessage.PlatformData(2900, 80, 200, Constants.PLATFORM_HEIGHT, 0));
 
         System.out.println(" " + serverPlatforms.size() + " plateformes créées sur le serveur");
+    }
+
+    /**
+     * CRÉATION DES SPIKES SUR LE SERVEUR
+     */
+    private void createServerSpikes() {
+        serverSpikes.clear();
+
+        // Quelques spikes
+        serverSpikes.add(new SpikeStateMessage.SpikeData(400, 32));
+        serverSpikes.add(new SpikeStateMessage.SpikeData(800, 32));
+        serverSpikes.add(new SpikeStateMessage.SpikeData(1300, 32));
+        serverSpikes.add(new SpikeStateMessage.SpikeData(1600, 32));
+        serverSpikes.add(new SpikeStateMessage.SpikeData(2200, 32));
+        serverSpikes.add(new SpikeStateMessage.SpikeData(600, 32));
+        serverSpikes.add(new SpikeStateMessage.SpikeData(1000, 32));
+        serverSpikes.add(new SpikeStateMessage.SpikeData(1800, 32));
+
+        System.out.println("" + serverSpikes.size() + " spikes créés sur le serveur");
     }
 
     /**
@@ -257,6 +315,12 @@ public class NetworkManager {
                     serverPlayer.applyServerPhysics(Constants.SERVER_UPDATE_INTERVAL);
                     checkServerPlatformCollisions(serverPlayer);
                     checkServerCollectibleCollisions(serverPlayer);
+
+                    // Vérifier chute dans le vide
+                    checkServerFallDeath(serverPlayer);
+
+                    // Vérifier collision avec spikes
+                    checkServerSpikeCollisions(serverPlayer);
 
                     // Vérifier si le joueur atteint le drapeau
                     checkFinishFlagCollision(serverPlayer);
@@ -412,6 +476,34 @@ public class NetworkManager {
     }
 
     /**
+     * VÉRIFIER SI UN JOUEUR TOMBE DANS LE VIDE
+     */
+    private void checkServerFallDeath(ServerPlayer serverPlayer) {
+        final float DEATH_THRESHOLD = -50f; // En dessous de Y = -50 = mort
+
+        if (serverPlayer.y < DEATH_THRESHOLD) {
+            System.out.println("[SERVEUR] Joueur " + serverPlayer.playerId + " est tombé dans le vide !");
+            respawnPlayer(serverPlayer);
+        }
+    }
+
+    /**
+     * VÉRIFIER SI UN JOUEUR TOUCHE UN SPIKE
+     */
+    private void checkServerSpikeCollisions(ServerPlayer serverPlayer) {
+        for (SpikeStateMessage.SpikeData spike : serverSpikes) {
+            // Rectangle du spike (32x32)
+            Rectangle spikeBounds = new Rectangle(spike.x, spike.y, 32f, 32f);
+
+            if (serverPlayer.getBounds().overlaps(spikeBounds)) {
+                System.out.println("[SERVEUR] Joueur " + serverPlayer.playerId + " a touché un spike !");
+                respawnPlayer(serverPlayer);
+                break; // Un spike par frame suffit
+            }
+        }
+    }
+
+    /**
      * VÉRIFIER SI LE JOUEUR ATTEINT LE DRAPEAU
      */
     private void checkFinishFlagCollision(ServerPlayer serverPlayer) {
@@ -494,6 +586,24 @@ public class NetworkManager {
     }
 
     /**
+     * ENVOYER L'ÉTAT DES SPIKES À TOUS LES CLIENTS
+     */
+    private void sendSpikeStateToAll() {
+        try {
+            SpikeStateMessage spikeState = new SpikeStateMessage();
+            spikeState.spikes.addAll(serverSpikes);
+
+            if (server != null && server.getConnections().length > 0) {
+                server.sendToAllTCP(spikeState);
+                System.out.println("[SERVEUR] Spikes envoyés à tous les clients");
+            }
+        } catch (Exception e) {
+            System.err.println("Erreur envoi état spikes: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    /**
      * ENVOYER L'ÉTAT DU DRAPEAU À TOUS LES CLIENTS
      */
     private void sendFinishFlagStateToAll() {
@@ -555,6 +665,13 @@ public class NetworkManager {
             connection.sendTCP(collectibleState);
 
             System.out.println("[SERVEUR] Collectibles envoyés à joueur " + connection.getID());
+
+            // Envoyer les spikes
+            SpikeStateMessage spikeState = new SpikeStateMessage();
+            spikeState.spikes.addAll(serverSpikes);
+            connection.sendTCP(spikeState);
+
+            System.out.println("[SERVEUR] Spikes envoyés à joueur " + connection.getID());
 
             // ÉTAPE 3 : Envoyer l'état du jeu
             GameStateMessage gameState = new GameStateMessage();
@@ -682,6 +799,13 @@ public class NetworkManager {
         // COLLECTIONS
         kryo.register(HashMap.class);
         kryo.register(java.util.ArrayList.class);
+
+        // Spikes
+        kryo.register(SpikeStateMessage.class);
+        kryo.register(SpikeStateMessage.SpikeData.class);
+
+        // Respawn
+        kryo.register(PlayerRespawnMessage.class);
     }
     /**
      * ENVOYER MESSAGE DE CONNEXION
@@ -907,9 +1031,19 @@ public class NetworkManager {
                 networkListener.onGameTimerReceived((GameTimerMessage) object);
             }
         } else if (object instanceof FinishFlagStateMessage) {
-            // ✅ NOUVEAU : Gérer l'état du drapeau
+            // Gérer l'état du drapeau
             if (networkListener != null) {
                 networkListener.onFinishFlagStateReceived((FinishFlagStateMessage) object);
+            }
+        } else if (object instanceof SpikeStateMessage) {
+            // Gérer les spikes
+            if (networkListener != null) {
+                networkListener.onSpikeStateReceived((SpikeStateMessage) object);
+            }
+        } else if (object instanceof PlayerRespawnMessage) {
+            // Gérer le respawn
+            if (networkListener != null) {
+                networkListener.onPlayerRespawned((PlayerRespawnMessage) object);
             }
         }
     }

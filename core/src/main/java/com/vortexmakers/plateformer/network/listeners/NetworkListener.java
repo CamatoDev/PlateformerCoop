@@ -15,6 +15,8 @@ public interface NetworkListener {
     void onPlatformStateReceived(PlatformStateMessage message);
     void onCollectibleStateReceived(CollectibleStateMessage message);
     void onGameTimerReceived(GameTimerMessage message);
+    void onSpikeStateReceived(SpikeStateMessage message);
+    void onPlayerRespawned(PlayerRespawnMessage message);
     void onFinishFlagStateReceived(FinishFlagStateMessage message);
     void onConnectedToServer();
     void onDisconnectedFromServer();

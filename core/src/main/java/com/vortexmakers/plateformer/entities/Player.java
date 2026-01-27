@@ -122,8 +122,6 @@ public class Player implements GameEntity {
 
         // Sol (temporaire - sera remplacé par les plateformes)
         if (position.y < 0) {
-            //position.y = 0;
-            //velocity.y = 0;
             isGrounded = true;
         }
     }

@@ -38,7 +38,10 @@ public class AssetManager implements Disposable {
     private Texture coinTexture;
     private Texture keyTexture;
 
-    // ✅ NOUVEAU : TEXTURES - DRAPEAU
+    // TEXTURES - PIÈGES
+    private Texture spikeTexture;
+
+    // TEXTURES - DRAPEAU
     private Texture flagGreenA;
     private Texture flagGreenB;
 
@@ -102,6 +105,9 @@ public class AssetManager implements Disposable {
             coinTexture = new Texture(Gdx.files.internal("Tiles/coin_gold.png"));
             keyTexture = new Texture(Gdx.files.internal("Tiles/key_yellow.png"));
 
+            // PIÈGES - Tiles (64x64)
+            spikeTexture = new Texture(Gdx.files.internal("Tiles/spikes.png"));
+
             // BACKGROUND - Backgrounds (256x256)
             backgroundSky = new Texture(Gdx.files.internal("Backgrounds/background_solid_sky.png"));
             backgroundHills = new Texture(Gdx.files.internal("Backgrounds/background_color_hills.png"));
@@ -141,6 +147,8 @@ public class AssetManager implements Disposable {
 
         coinTexture.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
         keyTexture.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
+
+        spikeTexture.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
 
         // Drapeau
         flagGreenA.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
@@ -196,6 +204,13 @@ public class AssetManager implements Disposable {
     public Texture getCoinTexture() {
         checkAssetsLoaded();
         return coinTexture;
+    }
+
+    // GETTER - PIÈGES
+
+    public Texture getSpikeTexture() {
+        checkAssetsLoaded();
+        return spikeTexture;
     }
 
     public Texture getKeyTexture() {
@@ -266,6 +281,9 @@ public class AssetManager implements Disposable {
         // COLLECTIBLES
         if (coinTexture != null) coinTexture.dispose();
         if (keyTexture != null) keyTexture.dispose();
+
+        // PIÈGES
+        if (spikeTexture != null) spikeTexture.dispose();
 
         // Drapeau
         if (flagGreenA != null) flagGreenA.dispose();

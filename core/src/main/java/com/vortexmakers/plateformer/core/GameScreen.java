@@ -7,7 +7,7 @@ import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
-import com.badlogic.gdx.utils.Array;
+import com.vortexmakers.plateformer.entities.Spike;
 import com.vortexmakers.plateformer.entities.Collectible;
 import com.vortexmakers.plateformer.entities.FinishFlag;
 import com.vortexmakers.plateformer.entities.Player;
@@ -51,6 +51,8 @@ public class GameScreen implements Screen, NetworkListener {
 
     // COLLECTIBLES CLIENT
     private Map<Integer, Collectible> clientCollectibles;
+    // SPIKES CLIENT
+    private Map<Integer, Spike> clientSpikes;
 
     // DRAPEAU DE FIN
     private FinishFlag finishFlag;
@@ -90,6 +92,11 @@ public class GameScreen implements Screen, NetworkListener {
 
     private boolean transitioningToWin = false;
     private boolean transitioningToGameOver = false;
+
+    // INVINCIBILITÉ APRÈS RESPAWN
+    private boolean localPlayerInvincible = false;
+    private float invincibilityTimer = 0f;
+    private static final float INVINCIBILITY_DURATION = 2.0f; // 2 secondes
 
     public GameScreen(PlateformerGame game, NetworkManager networkManager) {
         System.out.println("🎮 CREATION GameScreen - ID: " + networkManager.getLocalPlayerId());
@@ -134,9 +141,10 @@ public class GameScreen implements Screen, NetworkListener {
 
         // Création des entités
         localPlayer = new Player(50, 300);  // CRÉATION DU JOUEUR LOCAL
-        // ✅ MODIFICATION: Initialiser la Map
+        // Initialiser la Map
         this.clientPlatforms = new HashMap<>();
         this.clientCollectibles = new HashMap<>();
+        this.clientSpikes = new HashMap<>();
 
         // Initialiser
         this.playersWhoFinishedLevel = new HashSet<>();
@@ -185,6 +193,7 @@ public class GameScreen implements Screen, NetworkListener {
         renderPlatforms();
 
         renderCollectibles();
+        renderSpikes();
 
         // Dessiner le drapeau
         if (finishFlag != null) {
@@ -221,10 +230,19 @@ public class GameScreen implements Screen, NetworkListener {
      * METTRE À JOUR LE JOUEUR LOCAL (inputs seulement)
      */
     private void update(float delta) {
+        // Mise à jour du timer d'invincibilité
+        if (localPlayerInvincible) {
+            invincibilityTimer -= delta;
+            if (invincibilityTimer <= 0) {
+                localPlayerInvincible = false;
+                System.out.println("[CLIENT] Invincibilité terminée");
+            }
+        }
+
         // Vérifier si le temps est écoulé
         if (gameTimer >= levelTimeLimit && !transitioningToGameOver && !transitioningToWin) {
             transitioningToGameOver = true;
-            System.out.println("⏰ Temps écoulé ! Game Over");
+            System.out.println("Temps écoulé ! Game Over");
 
             // Petit délai avant transition
             new Thread(() -> {
@@ -456,12 +474,34 @@ public class GameScreen implements Screen, NetworkListener {
     }
 
     private void renderPlayers() {
-        // DESSINER LE JOUEUR LOCAL
-        localPlayer.render(batch);
+        // Effet visuel invincibilité
+        if (localPlayerInvincible) {
+            // Clignotement : alternance visible/invisible
+            boolean visible = ((int)(invincibilityTimer * 10) % 2 == 0);
+            if (visible) {
+                // Teinte légèrement bleue pour indiquer l'invincibilité
+                batch.setColor(0.5f, 0.8f, 1.0f, 0.8f);
+                localPlayer.render(batch);
+                batch.setColor(1, 1, 1, 1); // Réinitialiser
+            }
+            // Si !visible, ne pas dessiner (effet clignotement)
+        } else {
+            // Normal
+            localPlayer.render(batch);
+        }
 
-        // DESSINER LES JOUEURS DISTANTS
+        // DESSINER LES JOUEURS DISTANTS (normalement)
         for (Player remotePlayer : remotePlayers.values()) {
             remotePlayer.render(batch);
+        }
+    }
+
+    /**
+     * RENDU DES SPIKES
+     */
+    private void renderSpikes() {
+        for (Spike spike : clientSpikes.values()) {
+            spike.render(batch);
         }
     }
 
@@ -646,6 +686,58 @@ public class GameScreen implements Screen, NetworkListener {
                             System.out.println("🪙 Score joueur " + collectibleData.collectedByPlayerId + ": " + remotePlayerScores.get(collectibleData.collectedByPlayerId));
                         }
                     }
+                }
+            }
+        });
+    }
+
+    /**
+     * RÉCEPTION DE L'ÉTAT DES SPIKES DU SERVEUR
+     */
+    @Override
+    public void onSpikeStateReceived(SpikeStateMessage message) {
+        Gdx.app.postRunnable(() -> {
+            System.out.println("[CLIENT] Réception " + message.spikes.size() + " spikes");
+
+            clientSpikes.clear();
+
+            for (int i = 0; i < message.spikes.size(); i++) {
+                SpikeStateMessage.SpikeData spikeData = message.spikes.get(i);
+                Spike spike = new Spike(spikeData.x, spikeData.y);
+                clientSpikes.put(i, spike);
+            }
+
+            System.out.println("" + clientSpikes.size() + " spikes créés côté client");
+        });
+    }
+
+    /**
+     * RÉCEPTION D'UN MESSAGE DE RESPAWN
+     */
+    @Override
+    public void onPlayerRespawned(PlayerRespawnMessage message) {
+        Gdx.app.postRunnable(() -> {
+            System.out.println("[CLIENT] Joueur " + message.playerId + " respawn à X: " + message.spawnX + ", Y: " + message.spawnY);
+
+            if (message.playerId == localPlayerId) {
+                // C'est NOTRE respawn
+                localPlayer.setPosition(message.spawnX, message.spawnY);
+                localPlayer.setVelocity(0, 0);
+                localPlayer.setGrounded(false);
+
+                // Activer invincibilité
+                if (message.invincible) {
+                    localPlayerInvincible = true;
+                    invincibilityTimer = INVINCIBILITY_DURATION;
+                    System.out.println("[CLIENT] Invincibilité activée pour " + INVINCIBILITY_DURATION + "s");
+                }
+            } else {
+                // C'est un joueur distant
+                Player remotePlayer = remotePlayers.get(message.playerId);
+                if (remotePlayer != null) {
+                    remotePlayer.setPosition(message.spawnX, message.spawnY);
+                    remotePlayer.setVelocity(0, 0);
+                    remotePlayer.setGrounded(false);
                 }
             }
         });
@@ -845,6 +937,14 @@ public class GameScreen implements Screen, NetworkListener {
             }
         }
         clientCollectibles.clear();
+
+        // Nettoyer les spikes
+        for (Spike spike : clientSpikes.values()) {
+            if (spike != null) {
+                spike.dispose();
+            }
+        }
+        clientSpikes.clear();
 
         // Nettoyer le drapeau
         if (finishFlag != null) {

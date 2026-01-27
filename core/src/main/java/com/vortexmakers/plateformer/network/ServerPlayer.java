@@ -21,7 +21,7 @@ public class ServerPlayer {
     // Pour collisions
     private Rectangle bounds;
 
-    // ✅ NOUVEAU : Compteur pour garder l'input de saut
+    // Compteur pour garder l'input de saut
     private int jumpBufferFrames = 0;
     private static final int JUMP_BUFFER_DURATION = 3; // Garder pendant 3 frames (~50ms)
 
@@ -80,18 +80,18 @@ public class ServerPlayer {
             }
         }
 
-        // ✅ CORRECTION : Gérer le buffer de saut
+        // Gérer le buffer de saut
         if (currentJumpPressed) {
             jumpBufferFrames = JUMP_BUFFER_DURATION; // Activer le buffer
             currentJumpPressed = false; // Consommer l'input immédiatement
         }
 
-        // ✅ NOUVEAU : Décrémenter le buffer
+        // Décrémenter le buffer
         if (jumpBufferFrames > 0) {
             jumpBufferFrames--;
         }
 
-        // ✅ CORRECTION : Saut avec buffer
+        // Saut avec buffer
         if (jumpBufferFrames > 0 && isGrounded) {
             velocityY = Constants.JUMP_FORCE;
             isGrounded = false;
@@ -117,7 +117,6 @@ public class ServerPlayer {
 
         // SOL DE SECOURS
         if (y < 0) {
-            y = 0;
             velocityY = 0;
             isGrounded = true;
         }
