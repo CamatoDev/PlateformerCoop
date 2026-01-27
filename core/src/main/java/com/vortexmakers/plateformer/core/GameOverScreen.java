@@ -8,6 +8,7 @@ import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
+import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.Stage;
@@ -15,8 +16,8 @@ import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import com.badlogic.gdx.scenes.scene2d.ui.Table;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
+import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.vortexmakers.plateformer.network.NetworkManager;
-import com.vortexmakers.plateformer.utils.Constants;
 
 import java.util.*;
 
@@ -37,23 +38,18 @@ public class GameOverScreen implements Screen {
     private BitmapFont titleFont;
     private BitmapFont textFont;
     private Skin skin;
+    private GlyphLayout layout;
 
-    // Données de la partie
+    // Données
     private int localPlayerScore;
     private Map<Integer, Integer> remotePlayerScores;
     private float timeElapsed;
-
-    // Référence réseau
     private NetworkManager networkManager;
 
-    /**
-     * CONSTRUCTEUR
-     *
-     * @param game Référence au jeu principal
-     * @param localPlayerScore Score du joueur local
-     * @param remotePlayerScores Map des scores des joueurs distants
-     * @param timeElapsed Temps écoulé avant le game over
-     */
+    // Taille virtuelle
+    private static final int VIRTUAL_WIDTH = 1080;
+    private static final int VIRTUAL_HEIGHT = 720;
+
     public GameOverScreen(PlateformerGame game, int localPlayerScore,
                           Map<Integer, Integer> remotePlayerScores, float timeElapsed) {
         this.game = game;
@@ -61,31 +57,26 @@ public class GameOverScreen implements Screen {
         this.localPlayerScore = localPlayerScore;
         this.remotePlayerScores = new HashMap<>(remotePlayerScores);
         this.timeElapsed = timeElapsed;
+        this.layout = new GlyphLayout();
 
-        System.out.println("💀 GameOverScreen créé - Temps: " + formatTime((int)timeElapsed));
+        System.out.println("GameOverScreen créé - Temps: " + formatTime((int)timeElapsed));
     }
 
     @Override
     public void show() {
-        // Initialisation graphique
+        // Caméra
         camera = new OrthographicCamera();
-        camera.setToOrtho(false, Constants.SCREEN_WIDTH, Constants.SCREEN_HEIGHT);
+        camera.setToOrtho(false, VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
         batch = new SpriteBatch();
 
         // Polices
-        titleFont = new BitmapFont();
-        titleFont.getData().setScale(4.0f);
-        titleFont.setColor(Color.RED);
+        createPixelFonts();
 
-        textFont = new BitmapFont();
-        textFont.getData().setScale(2.0f);
-        textFont.setColor(Color.WHITE);
+        // Skin
+        skin = createPixelSkin();
 
-        // Création du skin et de l'UI
-        skin = createSkin();
-
-        // Stage pour les boutons
-        stage = new Stage();
+        // Stage
+        stage = new Stage(new FitViewport(VIRTUAL_WIDTH, VIRTUAL_HEIGHT));
         Gdx.input.setInputProcessor(stage);
 
         createUI();
@@ -94,23 +85,37 @@ public class GameOverScreen implements Screen {
     }
 
     /**
-     * CRÉATION DE L'INTERFACE UTILISATEUR
+     * CRÉATION POLICES
+     */
+    private void createPixelFonts() {
+        titleFont = new BitmapFont();
+        titleFont.getData().setScale(5.0f);
+        titleFont.setColor(Color.RED);
+        titleFont.setUseIntegerPositions(true);
+
+        textFont = new BitmapFont();
+        textFont.getData().setScale(2.5f);
+        textFont.setUseIntegerPositions(true);
+    }
+
+    /**
+     * CRÉATION UI
      */
     private void createUI() {
         Table table = new Table();
         table.setFillParent(true);
         stage.addActor(table);
 
-        // Espacement pour laisser de la place au titre et aux stats
-        table.padTop(400);
+        table.bottom().padBottom(50);
 
-        // Bouton "Réessayer" (désactivé pour l'instant)
+        // Bouton "Réessayer" (désactivé)
         TextButton retryButton = new TextButton("Reessayer", skin);
         retryButton.setDisabled(true);
-        retryButton.setColor(Color.GRAY);
+        retryButton.getLabel().setFontScale(1.2f);
 
         // Bouton "Retour au menu"
         TextButton menuButton = new TextButton("Retour au menu", skin);
+        menuButton.getLabel().setFontScale(1.2f);
         menuButton.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
@@ -118,27 +123,24 @@ public class GameOverScreen implements Screen {
             }
         });
 
-        // Disposition des boutons
-        table.add(retryButton).width(250).height(60).padBottom(20);
-        table.row();
-        table.add(menuButton).width(250).height(60);
+        // Disposition
+        table.add(menuButton).width(280).height(70).padRight(30);
+        table.add(retryButton).width(280).height(70);
     }
 
     /**
-     * RETOUR AU MENU (LOBBYSCREEN)
+     * RETOUR AU MENU
      */
     private void returnToMenu() {
-        System.out.println("Retour au menu...");
+        System.out.println("🔙 Retour au menu...");
 
-        // Déconnexion propre
         if (networkManager.isConnected()) {
             networkManager.disconnect();
         }
 
-        // Petit délai pour laisser la déconnexion se faire
         new Thread(() -> {
             try {
-                Thread.sleep(200);
+                Thread.sleep(300);
                 Gdx.app.postRunnable(() -> {
                     game.setScreen(new LobbyScreen(game));
                 });
@@ -150,85 +152,86 @@ public class GameOverScreen implements Screen {
 
     @Override
     public void render(float delta) {
-        // Fond rouge sombre (échec)
-        Gdx.gl.glClearColor(0.3f, 0.1f, 0.1f, 1);
+        // Fond rouge sombre
+        Gdx.gl.glClearColor(0.35f, 0.1f, 0.1f, 1);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
-        // Mise à jour du stage
         stage.act(delta);
 
-        // Rendu
+        camera.update();
         batch.setProjectionMatrix(camera.combined);
         batch.begin();
 
-        // TITRE "TEMPS ÉCOULÉ !"
+        // TITRE
+        titleFont.setColor(Color.RED);
         String title = "TEMPS ECOULE !";
-        float titleWidth = titleFont.getData().scaleX * title.length() * 30;
-        float titleX = (Constants.SCREEN_WIDTH - titleWidth) / 2f;
-        titleFont.draw(batch, title, titleX, Constants.SCREEN_HEIGHT - 50);
+        layout.setText(titleFont, title);
+        float titleX = (VIRTUAL_WIDTH - layout.width) / 2f;
+        titleFont.draw(batch, title, titleX, VIRTUAL_HEIGHT - 60);
 
         // SOUS-TITRE
+        textFont.setColor(Color.WHITE);
         String subtitle = "Vous n'avez pas termine a temps...";
-        float subtitleWidth = textFont.getData().scaleX * subtitle.length() * 15;
-        float subtitleX = (Constants.SCREEN_WIDTH - subtitleWidth) / 2f;
-        textFont.draw(batch, subtitle, subtitleX, Constants.SCREEN_HEIGHT - 120);
+        layout.setText(textFont, subtitle);
+        float subtitleX = (VIRTUAL_WIDTH - layout.width) / 2f;
+        textFont.draw(batch, subtitle, subtitleX, VIRTUAL_HEIGHT - 130);
 
-        // STATISTIQUES DE LA PARTIE
+        // STATS
         renderStats();
 
         batch.end();
 
-        // Dessiner les boutons
         stage.draw();
     }
 
     /**
-     * AFFICHAGE DES STATISTIQUES
+     * AFFICHAGE STATS
      */
     private void renderStats() {
-        float startY = Constants.SCREEN_HEIGHT - 200;
-        float lineHeight = 40;
+        float startY = VIRTUAL_HEIGHT - 220;
+        float lineHeight = 50;
+        float leftMargin = 150;
 
-        // Temps écoulé
+        // Temps
+        textFont.setColor(Color.ORANGE);
+        String timeText = "Temps ecoule: " + formatTime((int)timeElapsed);
+        textFont.draw(batch, timeText, leftMargin, startY);
+
+        startY -= 80;
+
+        // Titre scores
         textFont.setColor(Color.YELLOW);
-        String timeText = "Temps: " + formatTime((int)timeElapsed);
-        textFont.draw(batch, timeText, 100, startY);
+        textFont.draw(batch, "SCORES FINAUX", leftMargin, startY);
 
         startY -= 60;
 
-        // Scores des joueurs
-        textFont.setColor(Color.WHITE);
-        textFont.draw(batch, "SCORES FINAUX", 100, startY);
-
-        startY -= 50;
-
-        // Score du joueur local
+        // Score local
         int localPlayerId = networkManager.getLocalPlayerId();
         String localName = networkManager.isHost() ? "You (Host)" : "You";
         textFont.setColor(Color.CYAN);
-        textFont.draw(batch, localName + ": " + localPlayerScore + " coins", 120, startY);
+        textFont.draw(batch, localName + ": " + localPlayerScore + " coins", leftMargin + 30, startY);
 
         startY -= lineHeight;
 
-        // Scores des joueurs distants
+        // Scores distants
         textFont.setColor(Color.LIGHT_GRAY);
         for (Map.Entry<Integer, Integer> entry : remotePlayerScores.entrySet()) {
             String playerText = "Player " + entry.getKey() + ": " + entry.getValue() + " coins";
-            textFont.draw(batch, playerText, 120, startY);
+            textFont.draw(batch, playerText, leftMargin + 30, startY);
             startY -= lineHeight;
         }
 
-        // Message d'encouragement
-        startY -= 40;
+        // Message encouragement
+        startY -= 30;
         textFont.setColor(Color.ORANGE);
-        String encouragement = "Essayez encore pour battre votre score !";
-        float encWidth = textFont.getData().scaleX * encouragement.length() * 15;
-        float encX = (Constants.SCREEN_WIDTH - encWidth) / 2f;
+        String encouragement = "Reessayez pour ameliorer votre score !";
+        layout.setText(textFont, encouragement);
+        float encX = (VIRTUAL_WIDTH - layout.width) / 2f;
         textFont.draw(batch, encouragement, encX, startY);
     }
 
     /**
-     * FORMATER LE TEMPS (MM:SS)
+     * FORMATAGE TEMPS
      */
     private String formatTime(int seconds) {
         int minutes = seconds / 60;
@@ -237,32 +240,30 @@ public class GameOverScreen implements Screen {
     }
 
     /**
-     * CRÉATION D'UN SKIN BASIQUE
+     * SKIN
      */
-    private Skin createSkin() {
+    private Skin createPixelSkin() {
         Skin skin = new Skin();
 
-        // Police
-        BitmapFont font = new BitmapFont();
-        font.getData().setScale(1.5f);
-        skin.add("default-font", font);
+        BitmapFont buttonFont = new BitmapFont();
+        buttonFont.getData().setScale(1.8f);
+        buttonFont.setUseIntegerPositions(true);
+        skin.add("default-font", buttonFont);
 
-        // Texture blanche pour les fonds
         Pixmap pixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
         pixmap.setColor(Color.WHITE);
         pixmap.fill();
         skin.add("white", new Texture(pixmap));
         pixmap.dispose();
 
-        // Style pour TextButton
         TextButton.TextButtonStyle buttonStyle = new TextButton.TextButtonStyle();
-        buttonStyle.up = skin.newDrawable("white", new Color(0.6f, 0.2f, 0.2f, 1));
-        buttonStyle.down = skin.newDrawable("white", new Color(0.5f, 0.1f, 0.1f, 1));
-        buttonStyle.over = skin.newDrawable("white", new Color(0.7f, 0.3f, 0.3f, 1));
-        buttonStyle.disabled = skin.newDrawable("white", Color.DARK_GRAY);
+        buttonStyle.up = skin.newDrawable("white", new Color(0.7f, 0.2f, 0.2f, 1));
+        buttonStyle.down = skin.newDrawable("white", new Color(0.6f, 0.1f, 0.1f, 1));
+        buttonStyle.over = skin.newDrawable("white", new Color(0.8f, 0.3f, 0.3f, 1));
+        buttonStyle.disabled = skin.newDrawable("white", new Color(0.3f, 0.3f, 0.3f, 1));
         buttonStyle.font = skin.getFont("default-font");
         buttonStyle.fontColor = Color.WHITE;
-        buttonStyle.disabledFontColor = Color.GRAY;
+        buttonStyle.disabledFontColor = new Color(0.6f, 0.6f, 0.6f, 1);
         skin.add("default", buttonStyle);
 
         return skin;
@@ -271,7 +272,6 @@ public class GameOverScreen implements Screen {
     @Override
     public void resize(int width, int height) {
         stage.getViewport().update(width, height, true);
-        camera.setToOrtho(false, width, height);
     }
 
     @Override
@@ -285,21 +285,11 @@ public class GameOverScreen implements Screen {
 
     @Override
     public void dispose() {
-        if (batch != null) {
-            batch.dispose();
-        }
-        if (stage != null) {
-            stage.dispose();
-        }
-        if (titleFont != null) {
-            titleFont.dispose();
-        }
-        if (textFont != null) {
-            textFont.dispose();
-        }
-        if (skin != null) {
-            skin.dispose();
-        }
+        if (batch != null) batch.dispose();
+        if (stage != null) stage.dispose();
+        if (titleFont != null) titleFont.dispose();
+        if (textFont != null) textFont.dispose();
+        if (skin != null) skin.dispose();
         System.out.println("GameOverScreen nettoyé");
     }
 }

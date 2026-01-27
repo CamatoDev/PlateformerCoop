@@ -98,6 +98,10 @@ public class GameScreen implements Screen, NetworkListener {
         this.networkManager = NetworkManager.getInstance();
         this.networkManager.setNetworkListener(this);
 
+        // Réinitialiser EXPLICITEMENT les flags à chaque création
+        this.transitioningToWin = false;
+        this.transitioningToGameOver = false;
+
         // RÉCUPÉRER NOTRE ID DE JOUEUR
         this.localPlayerId = networkManager.getLocalPlayerId();
 
@@ -653,6 +657,10 @@ public class GameScreen implements Screen, NetworkListener {
     @Override
     public void onFinishFlagStateReceived(FinishFlagStateMessage message) {
         Gdx.app.postRunnable(() -> {
+            // ✅ DEBUG : Vérifier l'état des flags
+            System.out.println("[CLIENT] onFinishFlagStateReceived - allPlayersFinished: " + message.allPlayersFinished +
+                ", transitioningToWin: " + transitioningToWin);
+
             // Créer le drapeau si pas encore fait
             if (finishFlag == null) {
                 finishFlag = new FinishFlag(message.flagX, message.flagY);
@@ -668,15 +676,14 @@ public class GameScreen implements Screen, NetworkListener {
                 System.out.println("[CLIENT] Vous avez atteint le drapeau !");
             }
 
-            // ✅ NOUVELLE LOGIQUE : Si tous ont fini, passer à l'écran de victoire
+            // Si tous ont fini, passer à l'écran de victoire
             if (allPlayersFinished && !transitioningToWin) {
-                transitioningToWin = true; // Empêcher les transitions multiples
+                transitioningToWin = true;
                 System.out.println("[CLIENT] 🏆 TOUS LES JOUEURS ONT FINI ! Transition vers LevelWinScreen...");
 
-                // Petit délai pour que les joueurs voient qu'ils ont fini
                 new Thread(() -> {
                     try {
-                        Thread.sleep(1000); // 1 seconde de délai
+                        Thread.sleep(1000);
                         Gdx.app.postRunnable(() -> {
                             game.setScreen(new LevelWinScreen(game, localPlayerScore, remotePlayerScores));
                         });

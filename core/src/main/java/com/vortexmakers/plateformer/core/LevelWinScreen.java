@@ -8,6 +8,7 @@ import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
+import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.Stage;
@@ -15,11 +16,10 @@ import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import com.badlogic.gdx.scenes.scene2d.ui.Table;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
+import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.vortexmakers.plateformer.network.NetworkManager;
-import com.vortexmakers.plateformer.utils.Constants;
 
 import java.util.*;
-
 /**
  * LEVELWINSCREEN - Écran de victoire affiché quand tous les joueurs terminent le niveau
  *
@@ -38,6 +38,7 @@ public class LevelWinScreen implements Screen {
     private BitmapFont titleFont;
     private BitmapFont scoreFont;
     private Skin skin;
+    private GlyphLayout layout; // Pour mesurer la largeur du texte
 
     // Données de score
     private Map<Integer, PlayerScore> playerScores;
@@ -45,6 +46,10 @@ public class LevelWinScreen implements Screen {
 
     // Référence réseau
     private NetworkManager networkManager;
+
+    // Taille virtuelle (comme dans Constants)
+    private static final int VIRTUAL_WIDTH = 1080;
+    private static final int VIRTUAL_HEIGHT = 720;
 
     /**
      * CLASSE INTERNE POUR STOCKER LES DONNÉES D'UN JOUEUR
@@ -62,26 +67,18 @@ public class LevelWinScreen implements Screen {
 
         @Override
         public int compareTo(PlayerScore other) {
-            // Tri décroissant (score le plus élevé en premier)
             return Integer.compare(other.score, this.score);
         }
     }
 
-    /**
-     * CONSTRUCTEUR
-     *
-     * @param game Référence au jeu principal
-     * @param localPlayerScore Score du joueur local
-     * @param remotePlayerScores Map des scores des joueurs distants
-     */
     public LevelWinScreen(PlateformerGame game, int localPlayerScore, Map<Integer, Integer> remotePlayerScores) {
         this.game = game;
         this.networkManager = NetworkManager.getInstance();
+        this.layout = new GlyphLayout();
 
         // Initialisation des scores
         this.playerScores = new HashMap<>();
 
-        // Ajouter le joueur local
         int localPlayerId = networkManager.getLocalPlayerId();
         playerScores.put(localPlayerId, new PlayerScore(
             localPlayerId,
@@ -89,7 +86,6 @@ public class LevelWinScreen implements Screen {
             localPlayerScore
         ));
 
-        // Ajouter les joueurs distants
         for (Map.Entry<Integer, Integer> entry : remotePlayerScores.entrySet()) {
             playerScores.put(entry.getKey(), new PlayerScore(
                 entry.getKey(),
@@ -98,38 +94,50 @@ public class LevelWinScreen implements Screen {
             ));
         }
 
-        // Créer le classement
         rankedPlayers = new ArrayList<>(playerScores.values());
         Collections.sort(rankedPlayers);
 
-        System.out.println("🏆 LevelWinScreen créé avec " + rankedPlayers.size() + " joueurs");
+        System.out.println("LevelWinScreen créé avec " + rankedPlayers.size() + " joueurs");
     }
 
     @Override
     public void show() {
-        // Initialisation graphique
+        // Caméra avec taille virtuelle fixe
         camera = new OrthographicCamera();
-        camera.setToOrtho(false, Constants.SCREEN_WIDTH, Constants.SCREEN_HEIGHT);
+        camera.setToOrtho(false, VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
         batch = new SpriteBatch();
 
-        // Polices
-        titleFont = new BitmapFont();
-        titleFont.getData().setScale(4.0f); // Grand titre
-        titleFont.setColor(Color.GOLD);
+        // Création des polices pixel-art style
+        createPixelFonts();
 
-        scoreFont = new BitmapFont();
-        scoreFont.getData().setScale(2.0f);
+        // Skin
+        skin = createPixelSkin();
 
-        // Création du skin et de l'UI
-        skin = createSkin();
-
-        // Stage pour les boutons
-        stage = new Stage();
+        // Stage avec viewport qui s'adapte
+        stage = new Stage(new FitViewport(VIRTUAL_WIDTH, VIRTUAL_HEIGHT));
         Gdx.input.setInputProcessor(stage);
 
         createUI();
 
         System.out.println("LevelWinScreen affiché");
+    }
+
+    /**
+     * CRÉATION DE POLICES PIXEL-ART
+     */
+    private void createPixelFonts() {
+        // Police pour le titre
+        titleFont = new BitmapFont();
+        titleFont.getData().setScale(5.0f);
+        titleFont.setColor(Color.GOLD);
+        titleFont.setUseIntegerPositions(true); // Pixels nets
+        titleFont.getData().markupEnabled = true;
+
+        // Police pour les scores
+        scoreFont = new BitmapFont();
+        scoreFont.getData().setScale(2.5f);
+        scoreFont.setUseIntegerPositions(true);
+        scoreFont.getData().markupEnabled = true;
     }
 
     /**
@@ -140,16 +148,17 @@ public class LevelWinScreen implements Screen {
         table.setFillParent(true);
         stage.addActor(table);
 
-        // Espacement pour laisser de la place au titre et aux scores
-        table.padTop(400);
+        // Position des boutons en bas
+        table.bottom().padBottom(50);
 
         // Bouton "Niveau suivant" (désactivé)
         TextButton nextLevelButton = new TextButton("Niveau suivant", skin);
-        nextLevelButton.setDisabled(true); // Grisé
-        nextLevelButton.setColor(Color.GRAY);
+        nextLevelButton.setDisabled(true);
+        nextLevelButton.getLabel().setFontScale(1.2f);
 
         // Bouton "Retour au menu"
         TextButton menuButton = new TextButton("Retour au menu", skin);
+        menuButton.getLabel().setFontScale(1.2f);
         menuButton.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
@@ -157,14 +166,13 @@ public class LevelWinScreen implements Screen {
             }
         });
 
-        // Disposition des boutons
-        table.add(nextLevelButton).width(250).height(60).padBottom(20);
-        table.row();
-        table.add(menuButton).width(250).height(60);
+        // Disposition horizontale des boutons
+        table.add(menuButton).width(280).height(70).padRight(30);
+        table.add(nextLevelButton).width(280).height(70);
     }
 
     /**
-     * RETOUR AU MENU (LOBBYSCREEN)
+     * RETOUR AU MENU
      */
     private void returnToMenu() {
         System.out.println("🔙 Retour au menu...");
@@ -174,10 +182,10 @@ public class LevelWinScreen implements Screen {
             networkManager.disconnect();
         }
 
-        // Petit délai pour laisser la déconnexion se faire
+        // Petit délai
         new Thread(() -> {
             try {
-                Thread.sleep(200);
+                Thread.sleep(300);
                 Gdx.app.postRunnable(() -> {
                     game.setScreen(new LobbyScreen(game));
                 });
@@ -190,35 +198,37 @@ public class LevelWinScreen implements Screen {
     @Override
     public void render(float delta) {
         // Fond vert victoire
-        Gdx.gl.glClearColor(0.1f, 0.5f, 0.2f, 1);
+        Gdx.gl.glClearColor(0.15f, 0.6f, 0.3f, 1);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
-        // Mise à jour du stage
+        // Mise à jour
         stage.act(delta);
 
         // Rendu
+        camera.update();
         batch.setProjectionMatrix(camera.combined);
         batch.begin();
 
         // TITRE "VICTOIRE !"
+        titleFont.setColor(Color.GOLD);
         String title = "VICTOIRE !";
-        float titleWidth = titleFont.getData().scaleX * title.length() * 30; // Estimation
-        float titleX = (Constants.SCREEN_WIDTH - titleWidth) / 2f;
-        titleFont.draw(batch, title, titleX, Constants.SCREEN_HEIGHT - 50);
+        layout.setText(titleFont, title);
+        float titleX = (VIRTUAL_WIDTH - layout.width) / 2f;
+        titleFont.draw(batch, title, titleX, VIRTUAL_HEIGHT - 60);
 
         // SOUS-TITRE
         scoreFont.setColor(Color.WHITE);
         String subtitle = "Tous les joueurs ont termine le niveau !";
-        float subtitleWidth = scoreFont.getData().scaleX * subtitle.length() * 15;
-        float subtitleX = (Constants.SCREEN_WIDTH - subtitleWidth) / 2f;
-        scoreFont.draw(batch, subtitle, subtitleX, Constants.SCREEN_HEIGHT - 120);
+        layout.setText(scoreFont, subtitle);
+        float subtitleX = (VIRTUAL_WIDTH - layout.width) / 2f;
+        scoreFont.draw(batch, subtitle, subtitleX, VIRTUAL_HEIGHT - 130);
 
-        // CLASSEMENT DES JOUEURS
+        // CLASSEMENT
         renderRanking();
 
         batch.end();
 
-        // Dessiner les boutons
+        // Boutons
         stage.draw();
     }
 
@@ -226,71 +236,80 @@ public class LevelWinScreen implements Screen {
      * AFFICHAGE DU CLASSEMENT
      */
     private void renderRanking() {
-        float startY = Constants.SCREEN_HEIGHT - 200;
-        float lineHeight = 40;
+        float startY = VIRTUAL_HEIGHT - 220;
+        float lineHeight = 50;
+        float leftMargin = 150;
 
-        // En-tête du classement
+        // En-tête
         scoreFont.setColor(Color.YELLOW);
-        scoreFont.draw(batch, "CLASSEMENT", 100, startY);
-        scoreFont.draw(batch, "SCORE", Constants.SCREEN_WIDTH - 250, startY);
+        scoreFont.draw(batch, "RANG", leftMargin, startY);
+        scoreFont.draw(batch, "JOUEUR", leftMargin + 150, startY);
+        scoreFont.draw(batch, "SCORE", VIRTUAL_WIDTH - 250, startY);
 
-        startY -= 50;
+        startY -= 60;
 
-        // Afficher chaque joueur
+        // Chaque joueur
         for (int i = 0; i < rankedPlayers.size(); i++) {
             PlayerScore player = rankedPlayers.get(i);
+            float currentY = startY - (i * lineHeight);
 
-            // Couleur selon le rang
+            // Couleur selon rang
+            Color rankColor;
+            String medal = "";
             if (i == 0) {
-                scoreFont.setColor(Color.GOLD); // 1er = Or
+                rankColor = Color.GOLD;
+                medal = "🏆 ";
             } else if (i == 1) {
-                scoreFont.setColor(Color.LIGHT_GRAY); // 2e = Argent
+                rankColor = new Color(0.75f, 0.75f, 0.75f, 1); // Argent
+                medal = "🥈 ";
             } else if (i == 2) {
-                scoreFont.setColor(new Color(0.8f, 0.5f, 0.2f, 1)); // 3e = Bronze
+                rankColor = new Color(0.8f, 0.5f, 0.2f, 1); // Bronze
+                medal = "🥉 ";
             } else {
-                scoreFont.setColor(Color.WHITE);
+                rankColor = Color.WHITE;
             }
 
-            // Rang et nom
-            String rankText = (i + 1) + ". " + player.playerName;
-            scoreFont.draw(batch, rankText, 100, startY - (i * lineHeight));
+            scoreFont.setColor(rankColor);
 
-            // Score avec médaille pour le 1er
-            String scoreText = player.score + " coins";
-            if (i == 0) {
-                scoreText = "🏆 " + scoreText;
-            }
-            scoreFont.draw(batch, scoreText, Constants.SCREEN_WIDTH - 250, startY - (i * lineHeight));
+            // Rang
+            scoreFont.draw(batch, medal + (i + 1), leftMargin, currentY);
+
+            // Nom
+            scoreFont.draw(batch, player.playerName, leftMargin + 150, currentY);
+
+            // Score
+            scoreFont.draw(batch, player.score + " coins", VIRTUAL_WIDTH - 250, currentY);
         }
     }
 
     /**
-     * CRÉATION D'UN SKIN BASIQUE
+     * SKIN PIXEL-ART
      */
-    private Skin createSkin() {
+    private Skin createPixelSkin() {
         Skin skin = new Skin();
 
-        // Police
-        BitmapFont font = new BitmapFont();
-        font.getData().setScale(1.5f);
-        skin.add("default-font", font);
+        // Police pour boutons
+        BitmapFont buttonFont = new BitmapFont();
+        buttonFont.getData().setScale(1.8f);
+        buttonFont.setUseIntegerPositions(true);
+        skin.add("default-font", buttonFont);
 
-        // Texture blanche pour les fonds
+        // Texture
         Pixmap pixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
         pixmap.setColor(Color.WHITE);
         pixmap.fill();
         skin.add("white", new Texture(pixmap));
         pixmap.dispose();
 
-        // Style pour TextButton
+        // Style bouton
         TextButton.TextButtonStyle buttonStyle = new TextButton.TextButtonStyle();
-        buttonStyle.up = skin.newDrawable("white", new Color(0.2f, 0.4f, 0.6f, 1));
-        buttonStyle.down = skin.newDrawable("white", new Color(0.1f, 0.3f, 0.5f, 1));
-        buttonStyle.over = skin.newDrawable("white", new Color(0.3f, 0.5f, 0.7f, 1));
-        buttonStyle.disabled = skin.newDrawable("white", Color.DARK_GRAY);
+        buttonStyle.up = skin.newDrawable("white", new Color(0.2f, 0.5f, 0.8f, 1));
+        buttonStyle.down = skin.newDrawable("white", new Color(0.1f, 0.4f, 0.7f, 1));
+        buttonStyle.over = skin.newDrawable("white", new Color(0.3f, 0.6f, 0.9f, 1));
+        buttonStyle.disabled = skin.newDrawable("white", new Color(0.3f, 0.3f, 0.3f, 1));
         buttonStyle.font = skin.getFont("default-font");
         buttonStyle.fontColor = Color.WHITE;
-        buttonStyle.disabledFontColor = Color.GRAY;
+        buttonStyle.disabledFontColor = new Color(0.6f, 0.6f, 0.6f, 1);
         skin.add("default", buttonStyle);
 
         return skin;
@@ -299,7 +318,6 @@ public class LevelWinScreen implements Screen {
     @Override
     public void resize(int width, int height) {
         stage.getViewport().update(width, height, true);
-        camera.setToOrtho(false, width, height);
     }
 
     @Override
@@ -313,21 +331,11 @@ public class LevelWinScreen implements Screen {
 
     @Override
     public void dispose() {
-        if (batch != null) {
-            batch.dispose();
-        }
-        if (stage != null) {
-            stage.dispose();
-        }
-        if (titleFont != null) {
-            titleFont.dispose();
-        }
-        if (scoreFont != null) {
-            scoreFont.dispose();
-        }
-        if (skin != null) {
-            skin.dispose();
-        }
+        if (batch != null) batch.dispose();
+        if (stage != null) stage.dispose();
+        if (titleFont != null) titleFont.dispose();
+        if (scoreFont != null) scoreFont.dispose();
+        if (skin != null) skin.dispose();
         System.out.println("LevelWinScreen nettoyé");
     }
 }
