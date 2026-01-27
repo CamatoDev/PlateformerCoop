@@ -258,21 +258,22 @@ public class LevelWinScreen implements Screen {
             String medal = "";
             if (i == 0) {
                 rankColor = Color.GOLD;
-                medal = "🏆 ";
+                medal = "[1st] "; // OU "★ " pour une étoile
             } else if (i == 1) {
                 rankColor = new Color(0.75f, 0.75f, 0.75f, 1); // Argent
-                medal = "🥈 ";
+                medal = "[2nd] ";
             } else if (i == 2) {
                 rankColor = new Color(0.8f, 0.5f, 0.2f, 1); // Bronze
-                medal = "🥉 ";
+                medal = "[3rd] ";
             } else {
                 rankColor = Color.WHITE;
+                medal = "[" + (i + 1) + "] ";
             }
 
             scoreFont.setColor(rankColor);
 
             // Rang
-            scoreFont.draw(batch, medal + (i + 1), leftMargin, currentY);
+            scoreFont.draw(batch, medal, leftMargin, currentY);
 
             // Nom
             scoreFont.draw(batch, player.playerName, leftMargin + 150, currentY);
