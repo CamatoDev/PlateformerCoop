@@ -12,8 +12,10 @@ public interface NetworkListener {
     void onPlayerJoined(PlayerJoinMessage message);
     void onPlayerLeft(PlayerLeaveMessage message);
     void onGameStateReceived(GameStateMessage message);
-    void onPlatformStateReceived(PlatformStateMessage message); // ✅ AJOUT
-    void onCollectibleStateReceived(CollectibleStateMessage message); // AJOUT
+    void onPlatformStateReceived(PlatformStateMessage message);
+    void onCollectibleStateReceived(CollectibleStateMessage message);
+    void onGameTimerReceived(GameTimerMessage message);
+    void onFinishFlagStateReceived(FinishFlagStateMessage message);
     void onConnectedToServer();
     void onDisconnectedFromServer();
     void onConnectionFailed(String reason);

@@ -38,6 +38,10 @@ public class AssetManager implements Disposable {
     private Texture coinTexture;
     private Texture keyTexture;
 
+    // ✅ NOUVEAU : TEXTURES - DRAPEAU
+    private Texture flagGreenA;
+    private Texture flagGreenB;
+
     // TEXTURES - BACKGROUND
     private Texture backgroundSky;
     private Texture backgroundHills;
@@ -90,6 +94,10 @@ public class AssetManager implements Disposable {
             platformBlock = new Texture(Gdx.files.internal("Tiles/block_empty.png"));
             platformTerrain = new Texture(Gdx.files.internal("Tiles/terrain_grass_block_top.png"));
 
+            // DRAPEAU - Tiles (128x128)
+            flagGreenA = new Texture(Gdx.files.internal("Tiles/Double/flag_red_a.png"));
+            flagGreenB = new Texture(Gdx.files.internal("Tiles/Double/flag_red_b.png"));
+
             // COLLECTIBLES - Tiles (64x64)
             coinTexture = new Texture(Gdx.files.internal("Tiles/coin_gold.png"));
             keyTexture = new Texture(Gdx.files.internal("Tiles/key_yellow.png"));
@@ -134,13 +142,17 @@ public class AssetManager implements Disposable {
         coinTexture.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
         keyTexture.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
 
+        // Drapeau
+        flagGreenA.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
+        flagGreenB.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
+
         backgroundSky.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
         backgroundHills.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
         backgroundClouds.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
         backgroundTrees.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
     }
 
-    // GETTERS - PLAYER ===================================
+    // GETTERS - PLAYER
 
     public Texture getPlayerIdle() {
         checkAssetsLoaded();
@@ -189,6 +201,17 @@ public class AssetManager implements Disposable {
     public Texture getKeyTexture() {
         checkAssetsLoaded();
         return keyTexture;
+    }
+
+    // Getters drapeau
+    public Texture getFlagGreenA() {
+        checkAssetsLoaded();
+        return flagGreenA;
+    }
+
+    public Texture getFlagGreenB() {
+        checkAssetsLoaded();
+        return flagGreenB;
     }
 
     // GETTERS - BACKGROUND
@@ -243,6 +266,10 @@ public class AssetManager implements Disposable {
         // COLLECTIBLES
         if (coinTexture != null) coinTexture.dispose();
         if (keyTexture != null) keyTexture.dispose();
+
+        // Drapeau
+        if (flagGreenA != null) flagGreenA.dispose();
+        if (flagGreenB != null) flagGreenB.dispose();
 
         // BACKGROUND
         if (backgroundSky != null) backgroundSky.dispose();

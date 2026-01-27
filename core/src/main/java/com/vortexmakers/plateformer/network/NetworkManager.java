@@ -14,10 +14,7 @@ import com.vortexmakers.plateformer.utils.Constants;
 
 // IMPORTATIONS JAVA =====================================
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 /**
  * NETWORKMANAGER - Gestionnaire réseau principal
@@ -30,38 +27,48 @@ public class NetworkManager {
     // INSTANCE UNIQUE
     private static NetworkManager instance;
 
-    // CONFIGURATION RÉSEAU ==============================
+    // CONFIGURATION RÉSEAU
     private static final int TCP_PORT = 54555;   // Port TCP pour données fiables
     private static final int UDP_PORT = 54777;   // Port UDP pour données rapides
 
-    // RÉFÉRENCES RÉSEAU ================================
+    // RÉFÉRENCES RÉSEAU
     private Server server;
     private Client client;
 
-    // ÉTATS ============================================
+    // ÉTATS
     private boolean isHost = false;
     private boolean isConnected = false;
     private NetworkListener networkListener;
 
-    // DONNÉES JOUEURS ==================================
+    // DONNÉES JOUEURS
     private int localPlayerId = -1;  // Notre ID (assigné par le serveur)
     private String localPlayerName = "Player";
 
-    // POUR LE SERVEUR AUTORITAIRE ======================
+    // POUR LE SERVEUR AUTORITAIRE
     private Map<Integer, ServerPlayer> serverPlayers;
     private List<CollectibleStateMessage.CollectibleData> serverCollectibles;
-    // ✅ MODIFICATION: Utiliser PlatformData au lieu de Rectangle
+    // Utiliser PlatformData au lieu de Rectangle
     private List<PlatformStateMessage.PlatformData> serverPlatforms;
     private int nextCollectibleId = 0;
 
     private boolean initialStateSent = false;
-    // TIMING SERVEUR ===================================
+    // TIMING SERVEUR
     private float serverUpdateTimer = 0f;
 
     // Pour le serveur : suivre tous les joueurs
     private Map<Integer, GameStateMessage.PlayerData> connectedPlayers;
     // Pour suivre la dernière séquence reçue de chaque joueur
     private Map<Integer, Integer> lastReceivedSequence;
+
+    // Timer du jeu (géré par le serveur)
+    private float serverGameTimer = 0f;
+    private float serverTimeLimit = 180f; // 3 minutes
+    private boolean serverTimerStarted = false;
+
+    // Drapeau de fin
+    private float finishFlagX = 2800f; // Position X du drapeau (près de la fin du monde)
+    private float finishFlagY = 32f;   // Position Y (sur le sol)
+    private Set<Integer> playersWhoFinished = new HashSet<>();
 
     // CONSTRUCTEUR PRIVÉ
     private NetworkManager() {
@@ -70,7 +77,7 @@ public class NetworkManager {
         this.serverCollectibles = new ArrayList<>();
         this.serverPlatforms = new ArrayList<>();
         this.lastReceivedSequence = new HashMap<>();
-        System.out.println("🎮 NetworkManager créé (Singleton)");
+        System.out.println("NetworkManager créé (Singleton)");
     }
 
     // POINT D'ACCÈS GLOBAL
@@ -93,31 +100,31 @@ public class NetworkManager {
      * DÉMARRER EN MODE HOST (Serveur SEULEMENT)
      */
     public void startHost() {
-        System.out.println("🚀 Démarrage du serveur...");
+        System.out.println("Démarrage du serveur...");
 
         isHost = true;
 
         try {
-            // CRÉATION SERVEUR ==========================
+            // CRÉATION SERVEUR
             server = new Server();
 
-            // ENREGISTREMENT DES CLASSES ================
+            // ENREGISTREMENT DES CLASSES
             registerClasses(server.getKryo());
 
-            // DÉMARRAGE SERVEUR ========================
+            // DÉMARRAGE SERVEUR
             server.start();
             server.bind(TCP_PORT, UDP_PORT);
 
-            // ÉCOUTEUR SERVEUR =========================
+            // ÉCOUTEUR SERVEUR
             server.addListener(new Listener() {
                 @Override
                 public void connected(Connection connection) {
-                    System.out.println("📞 Client connecté: " + connection.getID() + " from " + connection.getRemoteAddressTCP());
+                    System.out.println("Client connecté: " + connection.getID() + " from " + connection.getRemoteAddressTCP());
                 }
 
                 @Override
                 public void disconnected(Connection connection) {
-                    System.out.println("📞 Client déconnecté: " + connection.getID());
+                    System.out.println("Client déconnecté: " + connection.getID());
                     handlePlayerDisconnected(connection.getID());
                 }
 
@@ -127,19 +134,19 @@ public class NetworkManager {
                 }
             });
 
-            System.out.println("✅ Serveur démarré sur port " + TCP_PORT + " - En attente de joueurs...");
+            System.out.println("Serveur démarré sur port " + TCP_PORT + " - En attente de joueurs...");
 
-            // ✅ IMPORTANT: Le host doit maintenant se connecter en client
+            // Le host doit maintenant se connecter en client
             // Mais on laisse le LobbyScreen gérer cette connexion
-            System.out.println("🎮 Host - Prêt à se connecter en client");
+            System.out.println("Host - Prêt à se connecter en client");
 
             // INITIALISATION DU MONDE SERVEUR ==========
             initializeServerWorld();
 
-            System.out.println("✅ Serveur autoritaire démarré");
+            System.out.println("Serveur autoritaire démarré");
 
         } catch (IOException e) {
-            System.err.println("❌ Erreur démarrage serveur: " + e.getMessage());
+            System.err.println("Erreur démarrage serveur: " + e.getMessage());
             if (networkListener != null) {
                 networkListener.onConnectionFailed(e.getMessage());
             }
@@ -156,22 +163,24 @@ public class NetworkManager {
         // CRÉATION DES PLATFORM SERVEUR
         createServerPlatforms();
 
-//        // ✅ AJOUT: Envoyer l'état des plateformes
-//        sendPlatformStateToAll();
-//
-//        // ✅ CORRECTION: Envoyer immédiatement l'état des collectibles
-//        sendCollectibleStateToAll();
+        // Initialiser le set de joueurs finis
+        playersWhoFinished = new HashSet<>();
 
-        System.out.println("🎯 Monde serveur initialisé avec " + serverCollectibles.size() + " collectibles et " + serverPlatforms.size() + " plateformes");
+        System.out.println("Monde serveur initialisé avec " + serverCollectibles.size() + " collectibles et " + serverPlatforms.size() + " plateformes");
+        System.out.println("Drapeau placé à X: " + finishFlagX + ", Y: " + finishFlagY);
+
+
+        System.out.println("Monde serveur initialisé avec " + serverCollectibles.size() + " collectibles et " + serverPlatforms.size() + " plateformes");
+        System.out.println("Drapeau placé à X: " + finishFlagX + ", Y: " + finishFlagY);
     }
 
     /**
      * CRÉATION DES PLATEFORMES SUR LE SERVEUR
      */
     private void createServerPlatforms() {
-        serverPlatforms.clear(); // ✅ S'assurer que c'est vide
+        serverPlatforms.clear(); // S'assurer que c'est vide
 
-        // ✅ UTILISER PlatformData DIRECTEMENT
+        // UTILISER PlatformData DIRECTEMENT
         // Plateforme de base (sol)
         for (int i = 0; i < 15; i++) {
             serverPlatforms.add(new PlatformStateMessage.PlatformData(
@@ -197,7 +206,7 @@ public class NetworkManager {
         serverPlatforms.add(new PlatformStateMessage.PlatformData(2600, 150, 120, Constants.PLATFORM_HEIGHT, 0));
         serverPlatforms.add(new PlatformStateMessage.PlatformData(2900, 80, 200, Constants.PLATFORM_HEIGHT, 0));
 
-        System.out.println("🏗️ " + serverPlatforms.size() + " plateformes créées sur le serveur");
+        System.out.println(" " + serverPlatforms.size() + " plateformes créées sur le serveur");
     }
 
     /**
@@ -225,22 +234,46 @@ public class NetworkManager {
         if (serverUpdateTimer >= Constants.SERVER_UPDATE_INTERVAL) {
             serverUpdateTimer = 0f;
 
-            // ✅ CORRECTION: Toujours mettre à jour et envoyer, même sans joueurs
+            // Toujours mettre à jour et envoyer, même sans joueurs
             if (!serverPlayers.isEmpty()) {
+                // Démarrer le timer dès qu'il y a des joueurs
+                if (!serverTimerStarted) {
+                    serverTimerStarted = true;
+                    System.out.println("[SERVEUR] Timer démarré !");
+                }
+
+                // Incrémenter le timer du serveur
+                if (serverTimerStarted) {
+                    serverGameTimer += Constants.SERVER_UPDATE_INTERVAL;
+
+                    // Vérifier si le temps est écoulé
+                    if (serverGameTimer >= serverTimeLimit) {
+                        System.out.println("[SERVEUR] Temps écoulé ! Game Over");
+                        // TODO : Envoyer message Game Over (Phase 4)
+                    }
+                }
                 // APPLIQUER LA PHYSIQUE À TOUS LES JOUEURS
                 for (ServerPlayer serverPlayer : serverPlayers.values()) {
                     serverPlayer.applyServerPhysics(Constants.SERVER_UPDATE_INTERVAL);
                     checkServerPlatformCollisions(serverPlayer);
                     checkServerCollectibleCollisions(serverPlayer);
+
+                    // Vérifier si le joueur atteint le drapeau
+                    checkFinishFlagCollision(serverPlayer);
                 }
 
                 updateConnectedPlayersFromServer();
             }
 
-            // ✅ CORRECTION: Envoyer les états même sans joueurs (pour synchronisation initiale)
+            // Envoyer les états même sans joueurs (pour synchronisation initiale)
             sendGameStateToAll();
             //sendPlatformStateToAll();
             sendCollectibleStateToAll();
+
+            // Envoyer le timer toutes les secondes
+            if (serverTimerStarted && (int)serverGameTimer % 1 == 0) {
+                sendTimerStateToAll();
+            }
         }
     }
 
@@ -265,12 +298,12 @@ public class NetworkManager {
         float minOverlap = Math.min(Math.min(overlapLeft, overlapRight),
             Math.min(overlapTop, overlapBottom));
 
-        // ✅ CORRECTION : Seuil plus strict pour éviter les collisions ambiguës
+        // Seuil plus strict pour éviter les collisions ambiguës
         final float COLLISION_THRESHOLD = 1.0f;
 
         if (minOverlap == overlapTop && overlapTop > COLLISION_THRESHOLD) {
             // COLLISION PAR LE HAUT : atterrissage
-            // ✅ CORRECTION : Positionner EXACTEMENT sur la plateforme
+            // Positionner EXACTEMENT sur la plateforme
             serverPlayer.y = platform.y + platform.height;
             serverPlayer.velocityY = 0;
             serverPlayer.updateBounds();
@@ -279,7 +312,7 @@ public class NetworkManager {
         } else if (minOverlap == overlapBottom && overlapBottom > COLLISION_THRESHOLD) {
             // COLLISION PAR LE BAS : plafond
             serverPlayer.y = platform.y - playerBounds.height;
-            // ✅ CORRECTION : Annuler seulement la vélocité positive
+            // Annuler seulement la vélocité positive
             if (serverPlayer.velocityY > 0) {
                 serverPlayer.velocityY = 0;
             }
@@ -310,14 +343,14 @@ public class NetworkManager {
     private void checkServerPlatformCollisions(ServerPlayer serverPlayer) {
         boolean grounded = false;
 
-        // ✅ NOUVEAU : Tolérance pour éviter les micro-gaps
+        // Tolérance pour éviter les micro-gaps
         final float GROUND_TOLERANCE = 2.0f; // Pixels de tolérance
 
         for (PlatformStateMessage.PlatformData platform : serverPlatforms) {
             Rectangle platformRect = new Rectangle(platform.x, platform.y, platform.width, platform.height);
             Rectangle playerBounds = serverPlayer.getBounds();
 
-            // ✅ CORRECTION : Vérifier si le joueur est "proche" du sol
+            // Vérifier si le joueur est "proche" du sol
             boolean isNearGround =
                 playerBounds.y <= platformRect.y + platformRect.height + GROUND_TOLERANCE &&
                     playerBounds.y + playerBounds.height > platformRect.y &&
@@ -328,7 +361,7 @@ public class NetworkManager {
                 boolean wasGroundedThisCollision = resolveServerCollision(serverPlayer, platformRect);
                 grounded = wasGroundedThisCollision || grounded;
             } else if (isNearGround && Math.abs(serverPlayer.velocityY) < 10f) {
-                // ✅ NOUVEAU : Si très proche du sol et pas beaucoup de vélocité Y,
+                // Si très proche du sol et pas beaucoup de vélocité Y,
                 // considérer comme au sol (évite les micro-rebonds)
                 grounded = true;
             }
@@ -338,17 +371,17 @@ public class NetworkManager {
         boolean wasGrounded = serverPlayer.isGrounded;
         serverPlayer.isGrounded = grounded;
 
-        // ✅ CORRECTION : Forcer vélocité Y à 0 si au sol
+        // Forcer vélocité Y à 0 si au sol
         if (grounded && serverPlayer.velocityY < 0) {
             serverPlayer.velocityY = 0;
         }
 
         // Logger seulement les changements significatifs (pas chaque frame)
         if (!wasGrounded && grounded) {
-            System.out.println("🟢 Joueur " + serverPlayer.playerId + " atterrit");
+            System.out.println("Joueur " + serverPlayer.playerId + " atterrit");
         } else if (wasGrounded && !grounded && serverPlayer.velocityY > 10f) {
-            // ✅ CORRECTION : Logger seulement si vraiment un saut (pas un micro-gap)
-            System.out.println("🔴 Joueur " + serverPlayer.playerId + " décolle");
+            // Logger seulement si vraiment un saut (pas un micro-gap)
+            System.out.println("Joueur " + serverPlayer.playerId + " décolle");
         }
     }
 
@@ -364,16 +397,40 @@ public class NetworkManager {
                 );
 
                 if (serverPlayer.getBounds().overlaps(collectibleBounds)) {
-                    // ✅ MARQUER COMME COLLECTÉ IMMÉDIATEMENT
+                    // MARQUER COMME COLLECTÉ IMMÉDIATEMENT
                     collectible.collected = true;
                     collectible.collectedByPlayerId = serverPlayer.playerId;
 
-                    System.out.println("🎯 Serveur: Collectible " + collectible.collectibleId + " collecté");
+                    System.out.println("Serveur: Collectible " + collectible.collectibleId + " collecté");
 
-                    // ✅ ENVOYER IMMÉDIATEMENT l'état mis à jour
+                    // ENVOYER IMMÉDIATEMENT l'état mis à jour
                     sendCollectibleStateToAll();
                     break; // Un collectible par frame
                 }
+            }
+        }
+    }
+
+    /**
+     * VÉRIFIER SI LE JOUEUR ATTEINT LE DRAPEAU
+     */
+    private void checkFinishFlagCollision(ServerPlayer serverPlayer) {
+        // Zone du drapeau (64x64)
+        Rectangle flagBounds = new Rectangle(finishFlagX, finishFlagY, 64f, 64f);
+
+        if (serverPlayer.getBounds().overlaps(flagBounds)) {
+            // Le joueur a atteint le drapeau
+            if (!playersWhoFinished.contains(serverPlayer.playerId)) {
+                playersWhoFinished.add(serverPlayer.playerId);
+                System.out.println("[SERVEUR] Joueur " + serverPlayer.playerId + " a atteint le drapeau ! (" + playersWhoFinished.size() + "/" + serverPlayers.size() + ")");
+
+                // Vérifier si tous les joueurs ont fini
+                if (playersWhoFinished.size() == serverPlayers.size()) {
+                    System.out.println("[SERVEUR] TOUS LES JOUEURS ONT FINI ! Victory !");
+                }
+
+                // Envoyer l'état mis à jour
+                sendFinishFlagStateToAll();
             }
         }
     }
@@ -392,7 +449,7 @@ public class NetworkManager {
                 connectedPlayers.put(playerId, playerData);
             }
 
-            // ✅ SYNCHRONISATION COMPLÈTE
+            // SYNCHRONISATION COMPLÈTE
             playerData.x = serverPlayer.x;
             playerData.y = serverPlayer.y;
             playerData.velocityX = serverPlayer.velocityX;
@@ -408,14 +465,13 @@ public class NetworkManager {
     private void sendPlatformStateToAll() {
         try {
             PlatformStateMessage platformState = new PlatformStateMessage();
-            platformState.platforms.addAll(serverPlatforms); // ✅ SIMPLE COPIE
+            platformState.platforms.addAll(serverPlatforms);
 
             if (server != null && server.getConnections().length > 0) {
                 server.sendToAllTCP(platformState);
-                //System.out.println("🏗️ État plateformes envoyé à " + server.getConnections().length + " clients");
             }
         } catch (Exception e) {
-            System.err.println("❌ Erreur envoi état plateformes: " + e.getMessage());
+            System.err.println("Erreur envoi état plateformes: " + e.getMessage());
         }
     }
 
@@ -427,18 +483,62 @@ public class NetworkManager {
             CollectibleStateMessage collectibleState = new CollectibleStateMessage();
             collectibleState.collectibles.addAll(serverCollectibles);
 
-            // ✅ AJOUT: Vérification avant envoi
+            // Vérification avant envoi
             if (server != null && server.getConnections().length > 0) {
                 server.sendToAllUDP(collectibleState);
             }
         } catch (Exception e) {
-            System.err.println("❌ Erreur envoi état collectibles: " + e.getMessage());
+            System.err.println("Erreur envoi état collectibles: " + e.getMessage());
             e.printStackTrace();
         }
     }
 
     /**
-     * ✅ NOUVEAU : Envoyer l'état initial à UN joueur spécifique dans l'ordre correct
+     * ENVOYER L'ÉTAT DU DRAPEAU À TOUS LES CLIENTS
+     */
+    private void sendFinishFlagStateToAll() {
+        try {
+            boolean allFinished = (playersWhoFinished.size() == serverPlayers.size()) && !serverPlayers.isEmpty();
+
+            FinishFlagStateMessage flagMessage = new FinishFlagStateMessage(
+                finishFlagX,
+                finishFlagY,
+                playersWhoFinished,
+                allFinished
+            );
+
+            if (server != null && server.getConnections().length > 0) {
+                server.sendToAllTCP(flagMessage); // TCP pour garantir la réception
+                System.out.println("[SERVEUR] État drapeau envoyé - Finis: " + playersWhoFinished.size());
+            }
+        } catch (Exception e) {
+            System.err.println("Erreur envoi état drapeau: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * ENVOYER L'ÉTAT DU TIMER À TOUS LES CLIENTS
+     */
+    private void sendTimerStateToAll() {
+        try {
+            GameTimerMessage timerMessage = new GameTimerMessage(
+                serverGameTimer,
+                serverTimeLimit,
+                serverTimerStarted
+            );
+
+            if (server != null && server.getConnections().length > 0) {
+                server.sendToAllUDP(timerMessage);
+            }
+        } catch (Exception e) {
+            System.err.println("Erreur envoi timer: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * NOUVEAU : Envoyer l'état initial à UN joueur spécifique dans l'ordre correct
      */
     private void sendInitialGameStateToPlayer(Connection connection) {
         try {
@@ -447,14 +547,14 @@ public class NetworkManager {
             platformState.platforms.addAll(serverPlatforms);
             connection.sendTCP(platformState); // TCP pour garantir l'ordre
 
-            System.out.println("📦 [SERVEUR] Plateformes envoyées à joueur " + connection.getID());
+            System.out.println("[SERVEUR] Plateformes envoyées à joueur " + connection.getID());
 
             // ÉTAPE 2 : Envoyer les collectibles
             CollectibleStateMessage collectibleState = new CollectibleStateMessage();
             collectibleState.collectibles.addAll(serverCollectibles);
             connection.sendTCP(collectibleState);
 
-            System.out.println("🎯 [SERVEUR] Collectibles envoyés à joueur " + connection.getID());
+            System.out.println("[SERVEUR] Collectibles envoyés à joueur " + connection.getID());
 
             // ÉTAPE 3 : Envoyer l'état du jeu
             GameStateMessage gameState = new GameStateMessage();
@@ -462,10 +562,13 @@ public class NetworkManager {
             gameState.playerStates.putAll(connectedPlayers);
             connection.sendTCP(gameState);
 
-            System.out.println("🎮 [SERVEUR] État du jeu envoyé à joueur " + connection.getID());
+            // ÉTAPE 4 : Envoyer l'état du drapeau
+            sendFinishFlagStateToAll();
+
+            System.out.println("[SERVEUR] État du jeu envoyé à joueur " + connection.getID());
 
         } catch (Exception e) {
-            System.err.println("❌ Erreur envoi état initial: " + e.getMessage());
+            System.err.println("Erreur envoi état initial: " + e.getMessage());
             e.printStackTrace();
         }
     }
@@ -474,11 +577,11 @@ public class NetworkManager {
      * REJOINDRE UN SERVEUR
      */
     public void connectToHost(String hostAddress) {
-        System.out.println("🔗 Connexion à: " + hostAddress);
+        System.out.println("Connexion à: " + hostAddress);
 
-        // ✅ NOUVEAU : Si déjà connecté, déconnecter d'abord
+        // Si déjà connecté, déconnecter d'abord
         if (client != null && client.isConnected()) {
-            System.out.println("⚠️ Client déjà connecté, déconnexion...");
+            System.out.println("Client déjà connecté, déconnexion...");
             client.close();
             try {
                 Thread.sleep(100); // Petit délai pour nettoyer
@@ -499,7 +602,7 @@ public class NetworkManager {
                 @Override
                 public void connected(Connection connection) {
                     isConnected = true;
-                    System.out.println("✅ [CLIENT] Connecté au serveur");
+                    System.out.println("[CLIENT] Connecté au serveur");
 
                     // ENVOYER MESSAGE DE CONNEXION
                     sendJoinMessage();
@@ -527,16 +630,16 @@ public class NetworkManager {
 
             // DÉMARRAGE CLIENT
             client.start();
-            System.out.println("🔗 Tentative de connexion TCP/UDP...");
+            System.out.println("Tentative de connexion TCP/UDP...");
 
             // CONNEXION
             client.connect(5000, hostAddress, TCP_PORT, UDP_PORT);
 
-            System.out.println("✅ Connexion établie avec le serveur!");
+            System.out.println("Connexion établie avec le serveur!");
 
         } catch (IOException e) {
             System.err.println("Erreur connexion: " + e.getMessage());
-            isConnected = false; // ✅ IMPORTANT
+            isConnected = false; // IMPORTANT
             if (networkListener != null) {
                 networkListener.onConnectionFailed(e.getMessage());
             }
@@ -560,14 +663,21 @@ public class NetworkManager {
         kryo.register(GameStateMessage.PlayerData.class);
         kryo.register(PlayerLeaveMessage.class);
 
-        // ✅ AJOUT: Enregistrer CollectibleStateMessage et ses classes internes
+        // Enregistrer CollectibleStateMessage et ses classes internes
         kryo.register(CollectibleStateMessage.class);
         kryo.register(CollectibleStateMessage.CollectibleData.class);
         kryo.register(java.util.ArrayList.class); // Important pour la liste
 
-        // ✅ AJOUT: Plateformes
+        // Plateformes
         kryo.register(PlatformStateMessage.class);
         kryo.register(PlatformStateMessage.PlatformData.class);
+
+        // Timer
+        kryo.register(GameTimerMessage.class);
+
+        // Drapeau de fin
+        kryo.register(FinishFlagStateMessage.class);
+        kryo.register(java.util.HashSet.class); // Pour le Set de joueurs
 
         // COLLECTIONS
         kryo.register(HashMap.class);
@@ -577,9 +687,9 @@ public class NetworkManager {
      * ENVOYER MESSAGE DE CONNEXION
      */
     private void sendJoinMessage() {
-        System.out.println("📤 [CLIENT] Envoi de PlayerJoinMessage...");
+        System.out.println("[CLIENT] Envoi de PlayerJoinMessage...");
 
-        // ✅ CORRECTION : Toujours envoyer -1, le serveur assignera le vrai ID
+        // Toujours envoyer -1, le serveur assignera le vrai ID
         PlayerJoinMessage joinMessage = new PlayerJoinMessage(
             -1,  // Le serveur remplacera par le vrai ID
             localPlayerName,
@@ -587,7 +697,7 @@ public class NetworkManager {
         );
 
         client.sendTCP(joinMessage);
-        System.out.println("📤 [CLIENT] PlayerJoinMessage envoyé, attente confirmation ID...");
+        System.out.println("[CLIENT] PlayerJoinMessage envoyé, attente confirmation ID...");
     }
 
     /**
@@ -635,12 +745,12 @@ public class NetworkManager {
         serverPlayer.isGrounded = true;
         serverPlayers.put(newPlayerId, serverPlayer);
 
-        // ✅ ÉTAPE 1 : Confirmation au joueur (TCP pour garantir l'ordre)
+        // ÉTAPE 1 : Confirmation au joueur (TCP pour garantir l'ordre)
         connection.sendTCP(message);
-        System.out.println("📤 [SERVEUR] Confirmation envoyée à joueur " + newPlayerId);
+        System.out.println("[SERVEUR] Confirmation envoyée à joueur " + newPlayerId);
 
-        // ✅ ÉTAPE 2 : Envoyer les joueurs existants au nouveau joueur AVANT de broadcaster
-        System.out.println("📤 [SERVEUR] Envoi des " + (connectedPlayers.size() - 1) + " joueurs existants à " + newPlayerId);
+        // ÉTAPE 2 : Envoyer les joueurs existants au nouveau joueur AVANT de broadcaster
+        System.out.println("[SERVEUR] Envoi des " + (connectedPlayers.size() - 1) + " joueurs existants à " + newPlayerId);
         for (Map.Entry<Integer, GameStateMessage.PlayerData> entry : connectedPlayers.entrySet()) {
             if (entry.getKey() != newPlayerId) {
                 PlayerJoinMessage existingPlayerMsg = new PlayerJoinMessage(
@@ -654,8 +764,8 @@ public class NetworkManager {
             }
         }
 
-        // ✅ ÉTAPE 3 : Diffuser le nouveau joueur aux AUTRES (pas à lui-même)
-        System.out.println("📤 [SERVEUR] Broadcast du nouveau joueur " + newPlayerId + " aux autres");
+        // ÉTAPE 3 : Diffuser le nouveau joueur aux AUTRES (pas à lui-même)
+        System.out.println("[SERVEUR] Broadcast du nouveau joueur " + newPlayerId + " aux autres");
         for (Connection conn : server.getConnections()) {
             if (conn.getID() != newPlayerId) {
                 conn.sendTCP(message);
@@ -663,10 +773,10 @@ public class NetworkManager {
             }
         }
 
-        // ✅ ÉTAPE 4 : Envoyer l'état initial (plateformes, collectibles)
+        // ÉTAPE 4 : Envoyer l'état initial (plateformes, collectibles)
         sendInitialGameStateToPlayer(connection);
 
-        System.out.println("🎮 [SERVEUR] Nouveau joueur: " + message.playerName + " (ID: " + newPlayerId + ") - Total: " + connectedPlayers.size());
+        System.out.println("[SERVEUR] Nouveau joueur: " + message.playerName + " (ID: " + newPlayerId + ") - Total: " + connectedPlayers.size());
     }
 
     /**
@@ -678,7 +788,7 @@ public class NetworkManager {
             return;
         }
 
-        // ✅ NOUVEAU : Vérifier la séquence pour éviter les inputs en retard
+        // Vérifier la séquence pour éviter les inputs en retard
         Integer lastSeq = lastReceivedSequence.get(message.playerId);
 
         if (lastSeq != null) {
@@ -693,7 +803,7 @@ public class NetworkManager {
 
             // Ignorer les inputs en retard (séquence plus ancienne)
             if (diff < 0) {
-                System.out.println("⚠️ Input en retard ignoré - Joueur: " + message.playerId +
+                System.out.println("Input en retard ignoré - Joueur: " + message.playerId +
                     ", Séquence reçue: " + message.inputSequence +
                     ", Dernière: " + lastSeq);
                 return;
@@ -734,8 +844,8 @@ public class NetworkManager {
      */
     private void handlePlayerDisconnected(int playerId) {
         connectedPlayers.remove(playerId);
-        serverPlayers.remove(playerId); // ✅ AJOUT : Nettoyer le joueur serveur
-        lastReceivedSequence.remove(playerId); // ✅ NOUVEAU : Nettoyer la séquence
+        serverPlayers.remove(playerId); // Nettoyer le joueur serveur
+        lastReceivedSequence.remove(playerId); // Nettoyer la séquence
 
         // Informer tous les clients
         PlayerLeaveMessage leaveMessage = new PlayerLeaveMessage(playerId);
@@ -744,7 +854,7 @@ public class NetworkManager {
         // Mettre à jour l'état
         sendGameStateToAll();
 
-        System.out.println("👋 Joueur déconnecté: " + playerId);
+        System.out.println("Joueur déconnecté: " + playerId);
     }
 
     /**
@@ -754,11 +864,11 @@ public class NetworkManager {
         if (object instanceof PlayerJoinMessage) {
             PlayerJoinMessage message = (PlayerJoinMessage) object;
 
-            // ✅ CORRECTION : Vérifier si c'est NOTRE confirmation d'ID
+            // Vérifier si c'est NOTRE confirmation d'ID
             if (localPlayerId == -1) {
                 // C'est forcément notre propre message de confirmation
                 localPlayerId = message.playerId;
-                System.out.println("✅ [CLIENT] ID confirmé par le serveur: " + localPlayerId);
+                System.out.println("[CLIENT] ID confirmé par le serveur: " + localPlayerId);
 
                 // Notifier le listener
                 if (networkListener != null) {
@@ -768,7 +878,7 @@ public class NetworkManager {
             }
 
             // Sinon, c'est un autre joueur qui rejoint
-            System.out.println("👤 [CLIENT] Autre joueur rejoint - ID: " + message.playerId);
+            System.out.println("[CLIENT] Autre joueur rejoint - ID: " + message.playerId);
             if (networkListener != null) {
                 networkListener.onPlayerJoined(message);
             }
@@ -782,19 +892,29 @@ public class NetworkManager {
                 networkListener.onPlayerLeft((PlayerLeaveMessage) object);
             }
         } else if (object instanceof PlatformStateMessage) {
-            // ✅ AJOUT: Gérer les plateformes
+            // Gérer les plateformes
             if (networkListener != null) {
                 networkListener.onPlatformStateReceived((PlatformStateMessage) object);
             }
         }else if (object instanceof CollectibleStateMessage) {
-            // ✅ AJOUTER CE CAS :
+            // Gérer les collectible
             if (networkListener != null) {
                 networkListener.onCollectibleStateReceived((CollectibleStateMessage) object);
+            }
+        } else if (object instanceof GameTimerMessage) {
+            // Gérer le timer
+            if (networkListener != null) {
+                networkListener.onGameTimerReceived((GameTimerMessage) object);
+            }
+        } else if (object instanceof FinishFlagStateMessage) {
+            // ✅ NOUVEAU : Gérer l'état du drapeau
+            if (networkListener != null) {
+                networkListener.onFinishFlagStateReceived((FinishFlagStateMessage) object);
             }
         }
     }
 
-    // GETTERS & SETTERS ================================
+    // GETTERS & SETTERS
 
     public void setNetworkListener(NetworkListener listener) {
         this.networkListener = listener;
@@ -820,14 +940,14 @@ public class NetworkManager {
      * FERMER LES CONNEXIONS
      */
     public void disconnect() {
-        System.out.println("🔌 DISCONNECT appelé - Host: " + isHost + ", Connecté: " + isConnected);
+        System.out.println("DISCONNECT appelé - Host: " + isHost + ", Connecté: " + isConnected);
 
         if (server != null) {
-            System.out.println("🔌 Fermeture du serveur...");
+            System.out.println("Fermeture du serveur...");
             server.stop();
         }
         if (client != null) {
-            System.out.println("🔌 Fermeture du client...");
+            System.out.println("Fermeture du client...");
             client.close();
         }
         isConnected = false;

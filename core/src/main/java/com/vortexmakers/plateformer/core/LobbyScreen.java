@@ -284,6 +284,16 @@ public class LobbyScreen implements Screen, NetworkListener {
         System.out.println("📦 État collectibles reçu (lobby) - " + message.collectibles.size() + " collectibles");
     }
 
+    @Override
+    public void onGameTimerReceived(GameTimerMessage message) {
+        // Pas utilisé dans le lobby
+    }
+
+    @Override
+    public void onFinishFlagStateReceived(FinishFlagStateMessage message) {
+        // Pas utilisé dans le lobby
+    }
+
     // AUTRES MÉTHODES SCREEN ===========================
 
     @Override
