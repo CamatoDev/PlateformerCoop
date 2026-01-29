@@ -10,6 +10,7 @@ import com.vortexmakers.plateformer.network.messages.*;
  */
 public interface NetworkListener {
     void onPlayerJoined(PlayerJoinMessage message);
+    void onPlayerCharacterChanged(PlayerCharacterMessage message);
     void onPlayerLeft(PlayerLeaveMessage message);
     void onGameStateReceived(GameStateMessage message);
     void onPlatformStateReceived(PlatformStateMessage message);

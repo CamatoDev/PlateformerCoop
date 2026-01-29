@@ -43,6 +43,7 @@ public class NetworkManager {
     // DONNÉES JOUEURS
     private int localPlayerId = -1;  // Notre ID (assigné par le serveur)
     private String localPlayerName = "Player";
+    private String localPlayerCharacter = "beige"; // Personnage choisi localement
 
     // POUR LE SERVEUR AUTORITAIRE
     private Map<Integer, ServerPlayer> serverPlayers;
@@ -62,6 +63,8 @@ public class NetworkManager {
     private Map<Integer, GameStateMessage.PlayerData> connectedPlayers;
     // Pour suivre la dernière séquence reçue de chaque joueur
     private Map<Integer, Integer> lastReceivedSequence;
+    // MAP : PlayerID → Type de personnage
+    private Map<Integer, String> playerCharacters;
 
     // Timer du jeu (géré par le serveur)
     private float serverGameTimer = 0f;
@@ -77,6 +80,7 @@ public class NetworkManager {
     private NetworkManager() {
         this.connectedPlayers = new HashMap<>();
         this.serverPlayers = new HashMap<>();
+        this.playerCharacters = new HashMap<>();
         this.serverCollectibles = new ArrayList<>();
         this.serverPlatforms = new ArrayList<>();
         this.lastReceivedSequence = new HashMap<>();
@@ -98,6 +102,14 @@ public class NetworkManager {
             instance.disconnect();
             instance = null;
         }
+    }
+
+    /**
+     * DÉFINIR LE PERSONNAGE CHOISI LOCALEMENT (avant connexion)
+     */
+    public void setLocalCharacter(String characterType) {
+        this.localPlayerCharacter = characterType;
+        System.out.println("[CLIENT] Personnage local défini : " + characterType);
     }
 
     /**
@@ -552,6 +564,17 @@ public class NetworkManager {
     }
 
     /**
+     * ENVOYER LE CHOIX DE PERSONNAGE AU SERVEUR
+     */
+    public void sendCharacterChoice(String characterType) {
+        if (client != null && client.isConnected()) {
+            PlayerCharacterMessage msg = new PlayerCharacterMessage(localPlayerId, characterType);
+            client.sendTCP(msg);
+            System.out.println("[CLIENT] Envoi choix personnage : " + characterType);
+        }
+    }
+
+    /**
      * ENVOYER L'ÉTAT DES PLATEFORMES À TOUS LES CLIENTS
      */
     private void sendPlatformStateToAll() {
@@ -779,6 +802,7 @@ public class NetworkManager {
         kryo.register(GameStateMessage.class);
         kryo.register(GameStateMessage.PlayerData.class);
         kryo.register(PlayerLeaveMessage.class);
+        kryo.register(PlayerCharacterMessage.class);
 
         // Enregistrer CollectibleStateMessage et ses classes internes
         kryo.register(CollectibleStateMessage.class);
@@ -811,17 +835,17 @@ public class NetworkManager {
      * ENVOYER MESSAGE DE CONNEXION
      */
     private void sendJoinMessage() {
-        System.out.println("[CLIENT] Envoi de PlayerJoinMessage...");
+        System.out.println("[CLIENT] Envoi de PlayerJoinMessage avec personnage : " + localPlayerCharacter);
 
-        // Toujours envoyer -1, le serveur assignera le vrai ID
         PlayerJoinMessage joinMessage = new PlayerJoinMessage(
-            -1,  // Le serveur remplacera par le vrai ID
+            -1,
             localPlayerName,
-            50, 300
+            50, 300,
+            localPlayerCharacter
         );
 
         client.sendTCP(joinMessage);
-        System.out.println("[CLIENT] PlayerJoinMessage envoyé, attente confirmation ID...");
+        System.out.println("[CLIENT] PlayerJoinMessage envoyé avec personnage : " + localPlayerCharacter);
     }
 
     /**
@@ -849,6 +873,8 @@ public class NetworkManager {
             handlePlayerJoin(connection, (PlayerJoinMessage) object);
         } else if (object instanceof PlayerInputMessage) {
             handlePlayerInput((PlayerInputMessage) object);
+        } else if (object instanceof PlayerCharacterMessage) {
+            handlePlayerCharacter((PlayerCharacterMessage) object);
         }
     }
 
@@ -868,6 +894,12 @@ public class NetworkManager {
         ServerPlayer serverPlayer = new ServerPlayer(message.startX, message.startY, newPlayerId);
         serverPlayer.isGrounded = true;
         serverPlayers.put(newPlayerId, serverPlayer);
+
+        // ✅ UTILISER LE PERSONNAGE DU MESSAGE (au lieu de "beige" par défaut)
+        String characterType = message.characterType != null ? message.characterType : "beige";
+        playerCharacters.put(newPlayerId, characterType);
+
+        System.out.println("[SERVEUR] Joueur " + newPlayerId + " rejoint avec personnage : " + characterType);
 
         // ÉTAPE 1 : Confirmation au joueur (TCP pour garantir l'ordre)
         connection.sendTCP(message);
@@ -942,6 +974,21 @@ public class NetworkManager {
         if (message.leftPressed) serverPlayer.currentInputX -= 1;
         if (message.rightPressed) serverPlayer.currentInputX += 1;
         serverPlayer.currentJumpPressed = message.jumpPressed;
+    }
+
+    /**
+     * GÉRER LE CHOIX DE PERSONNAGE (CÔTÉ SERVEUR)
+     */
+    private void handlePlayerCharacter(PlayerCharacterMessage message) {
+        System.out.println("[SERVEUR] Joueur " + message.playerId + " choisit : " + message.characterType);
+
+        // Sauvegarder le choix
+        playerCharacters.put(message.playerId, message.characterType);
+
+        // Diffuser à tous les clients (y compris l'émetteur)
+        if (server != null) {
+            server.sendToAllTCP(message);
+        }
     }
 
     /**
@@ -1045,6 +1092,10 @@ public class NetworkManager {
             if (networkListener != null) {
                 networkListener.onPlayerRespawned((PlayerRespawnMessage) object);
             }
+        } else if (object instanceof PlayerCharacterMessage) {
+            if (networkListener != null) {
+                networkListener.onPlayerCharacterChanged((PlayerCharacterMessage) object);
+            }
         }
     }
 
@@ -1068,6 +1119,13 @@ public class NetworkManager {
 
     public boolean isConnected() {
         return isConnected;
+    }
+
+    /**
+     * OBTENIR LE TYPE DE PERSONNAGE D'UN JOUEUR
+     */
+    public String getPlayerCharacter(int playerId) {
+        return playerCharacters.getOrDefault(playerId, "beige");
     }
 
     /**

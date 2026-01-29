@@ -6,6 +6,8 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.utils.Disposable;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * ASSETMANAGER - Gère le chargement et l'accès à toutes les ressources graphiques
@@ -23,12 +25,8 @@ public class AssetManager implements Disposable {
     // INSTANCE SINGLETON
     private static AssetManager instance;
 
-    // TEXTURES - PLAYER
-    private Texture playerIdle;
-    private Texture playerJump;
-    private Texture playerWalkA;
-    private Texture playerWalkB;
-    private Texture playerHit;
+    // TEXTURES - PLAYERS (tous les personnages)
+    private Map<String, PlayerTextures> characterTextures;
 
     // TEXTURES - PLATFORMES
     private Texture platformBlock;
@@ -86,12 +84,13 @@ public class AssetManager implements Disposable {
      */
     public void loadAssets() {
         try {
-            // PLAYER - Characters (128x128)
-            playerIdle = new Texture(Gdx.files.internal("Characters/character_beige_idle.png"));
-            playerJump = new Texture(Gdx.files.internal("Characters/character_beige_jump.png"));
-            playerWalkA = new Texture(Gdx.files.internal("Characters/character_beige_walk_a.png"));
-            playerWalkB = new Texture(Gdx.files.internal("Characters/character_beige_walk_b.png"));
-            playerHit = new Texture(Gdx.files.internal("Characters/character_beige_hit.png"));
+            // PLAYERS - Tous les personnages (128x128)
+            characterTextures = new HashMap<>();
+            characterTextures.put("beige", loadCharacterTextures("character_beige"));
+            characterTextures.put("green", loadCharacterTextures("character_green"));
+            characterTextures.put("pink", loadCharacterTextures("character_pink"));
+            characterTextures.put("purple", loadCharacterTextures("character_purple"));
+            characterTextures.put("yellow", loadCharacterTextures("character_yellow"));
 
             // PLATFORMES - Tiles (64x64)
             platformBlock = new Texture(Gdx.files.internal("Tiles/block_empty.png"));
@@ -128,6 +127,29 @@ public class AssetManager implements Disposable {
     }
 
     /**
+     * CHARGER TOUTES LES TEXTURES D'UN PERSONNAGE
+     */
+    private PlayerTextures loadCharacterTextures(String characterName) {
+        Texture idle = new Texture(Gdx.files.internal("Characters/" + characterName + "_idle.png"));
+        Texture jump = new Texture(Gdx.files.internal("Characters/" + characterName + "_jump.png"));
+        Texture walkA = new Texture(Gdx.files.internal("Characters/" + characterName + "_walk_a.png"));
+        Texture walkB = new Texture(Gdx.files.internal("Characters/" + characterName + "_walk_b.png"));
+        Texture hit = new Texture(Gdx.files.internal("Characters/" + characterName + "_hit.png"));
+
+        // Configuration du filtre
+        idle.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
+        jump.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
+        walkA.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
+        walkB.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
+        hit.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
+
+        System.out.println("Personnage chargé : " + characterName);
+
+        return new PlayerTextures(idle, jump, walkA, walkB, hit);
+    }
+
+
+    /**
      * CONFIGURATION DU FILTRE TEXTURE - Néarest pour pixel art
      *
      * Pourquoi Nearest et pas Linear ?
@@ -136,12 +158,6 @@ public class AssetManager implements Disposable {
      * → Nearest préserve les contours nets
      */
     private void setTextureFilterNearest() {
-        playerIdle.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
-        playerJump.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
-        playerWalkA.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
-        playerWalkB.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
-        playerHit.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
-
         platformBlock.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
         platformTerrain.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
 
@@ -160,32 +176,35 @@ public class AssetManager implements Disposable {
         backgroundTrees.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
     }
 
-    // GETTERS - PLAYER
+    // GETTERS - PLAYERS
 
-    public Texture getPlayerIdle() {
+    /**
+     * Obtenir les textures d'un type de personnage
+     */
+    public PlayerTextures getCharacterTextures(String characterType) {
         checkAssetsLoaded();
-        return playerIdle;
+        PlayerTextures textures = characterTextures.get(characterType);
+        if (textures == null) {
+            System.err.println("Personnage inconnu : " + characterType + ", utilisation de beige par défaut");
+            return characterTextures.get("beige");
+        }
+        return textures;
     }
 
-    public Texture getPlayerJump() {
-        checkAssetsLoaded();
-        return playerJump;
+    /**
+     * Vérifier si un type de personnage existe
+     */
+    public boolean hasCharacter(String characterType) {
+        return characterTextures.containsKey(characterType);
     }
 
-    public Texture getPlayerWalkA() {
-        checkAssetsLoaded();
-        return playerWalkA;
+    /**
+     * Obtenir tous les types de personnages disponibles
+     */
+    public String[] getAvailableCharacters() {
+        return new String[]{"beige", "green", "pink", "purple", "yellow"};
     }
 
-    public Texture getPlayerWalkB() {
-        checkAssetsLoaded();
-        return playerWalkB;
-    }
-
-    public Texture getPlayerHit() {
-        checkAssetsLoaded();
-        return playerHit;
-    }
 
     // GETTERS - PLATFORMES
 
@@ -267,12 +286,15 @@ public class AssetManager implements Disposable {
      */
     @Override
     public void dispose() {
-        // PLAYER
-        if (playerIdle != null) playerIdle.dispose();
-        if (playerJump != null) playerJump.dispose();
-        if (playerWalkA != null) playerWalkA.dispose();
-        if (playerWalkB != null) playerWalkB.dispose();
-        if (playerHit != null) playerHit.dispose();
+        // PLAYERS
+        if (characterTextures != null) {
+            for (PlayerTextures textures : characterTextures.values()) {
+                if (textures != null) {
+                    textures.dispose();
+                }
+            }
+            characterTextures.clear();
+        }
 
         // PLATFORMES
         if (platformBlock != null) platformBlock.dispose();
