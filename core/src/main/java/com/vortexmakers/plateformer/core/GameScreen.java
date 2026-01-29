@@ -961,6 +961,14 @@ public class GameScreen implements Screen, NetworkListener {
         });
     }
 
+    /**
+     * RÉCEPTION DE L'ÉTAT DU LOBBY (pas utilisé en jeu)
+     */
+    @Override
+    public void onLobbyStateReceived(LobbyStateMessage message) {
+        // Pas utilisé dans GameScreen, seulement dans LobbyScreen
+    }
+
     @Override
     public void resize(int width, int height) {
         // METTRE À JOUR LES CONSTANTES D'ÉCRAN

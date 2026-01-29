@@ -21,7 +21,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * LOBBYSCREEN - Avec sélection de personnage (style original amélioré)
+ * LOBBYSCREEN - Avec sélection de personnage et liste des joueurs
  */
 public class LobbyScreen implements Screen, NetworkListener {
     private final PlateformerGame game;
@@ -44,15 +44,20 @@ public class LobbyScreen implements Screen, NetworkListener {
     private String selectedCharacter = "beige";
     private Map<String, TextButton> characterButtons;
 
+    // ✅ NOUVEAU : LISTE DES JOUEURS
+    private Table playerListTable;
+    private Map<Integer, LobbyStateMessage.LobbyPlayerData> lobbyPlayers;
+
     // Flag connexion
     private boolean connectionCheckStarted = false;
-    private boolean gameScreenCreated = false; // ✅ NOUVEAU : Éviter les créations multiples
+    private boolean gameScreenCreated = false;
 
     public LobbyScreen(PlateformerGame game) {
         this.game = game;
         this.networkManager = NetworkManager.getInstance();
         this.networkManager.setNetworkListener(this);
         this.characterButtons = new HashMap<>();
+        this.lobbyPlayers = new HashMap<>();
     }
 
     @Override
@@ -72,25 +77,44 @@ public class LobbyScreen implements Screen, NetworkListener {
     }
 
     /**
-     * CRÉATION DE L'INTERFACE - Style clair et lisible
+     * CRÉATION DE L'INTERFACE - Avec liste des joueurs
      */
     private void createUI() {
-        Table table = new Table();
-        table.setFillParent(true);
-        stage.addActor(table);
+        Table mainTable = new Table();
+        mainTable.setFillParent(true);
+        stage.addActor(mainTable);
 
-        // ESPACE EN HAUT
-        table.padTop(50);
+        mainTable.padTop(20);
 
         // ==========================================
-        // SECTION 1 : CHOIX DU PERSONNAGE
+        // SECTION 1 : LISTE DES JOUEURS
+        // ==========================================
+        Label playersLabel = new Label("Joueurs connectes:", skin);
+        playersLabel.setFontScale(1.5f);
+        mainTable.add(playersLabel).colspan(5).padBottom(10);
+        mainTable.row();
+
+        // ✅ NOUVEAU : Table pour la liste des joueurs
+        playerListTable = new Table();
+        playerListTable.setBackground(skin.newDrawable("white", new Color(0.2f, 0.2f, 0.3f, 1)));
+
+        // Placeholder initial
+        Label emptyLabel = new Label("En attente de joueurs...", skin);
+        emptyLabel.setFontScale(0.8f);
+        playerListTable.add(emptyLabel).pad(10);
+
+        mainTable.add(playerListTable).colspan(5).width(600).height(100).padBottom(20);
+        mainTable.row();
+
+        // ==========================================
+        // SECTION 2 : CHOIX DU PERSONNAGE
         // ==========================================
         Label charLabel = new Label("Choix du personnage:", skin);
         charLabel.setFontScale(1.5f);
-        table.add(charLabel).colspan(5).padBottom(15);
-        table.row();
+        mainTable.add(charLabel).colspan(5).padBottom(15);
+        mainTable.row();
 
-        // Boutons de personnage en ligne
+        // Boutons de personnage
         String[] characters = {"beige", "green", "pink", "purple", "yellow"};
         String[] labels = {"Beige", "Vert", "Rose", "Violet", "Jaune"};
 
@@ -98,9 +122,8 @@ public class LobbyScreen implements Screen, NetworkListener {
             String character = characters[i];
             TextButton button = new TextButton(labels[i], skin);
 
-            // Mettre en surbrillance beige par défaut
             if (character.equals("beige")) {
-                button.setColor(1, 1, 0.5f, 1); // Jaune clair
+                button.setColor(1, 1, 0.5f, 1);
             }
 
             button.addListener(new ClickListener() {
@@ -111,19 +134,18 @@ public class LobbyScreen implements Screen, NetworkListener {
             });
 
             characterButtons.put(character, button);
-            table.add(button).width(120).height(60).pad(5);
+            mainTable.add(button).width(100).height(60).pad(5);
         }
-        table.row();
+        mainTable.row();
 
         // ESPACE
-        table.add().height(40).colspan(5);
-        table.row();
+        mainTable.add().height(20).colspan(5);
+        mainTable.row();
 
         // ==========================================
-        // SECTION 2 : BOUTONS CONNEXION
+        // SECTION 3 : BOUTONS CONNEXION
         // ==========================================
 
-        // Bouton héberger
         hostButton = new TextButton("Heberger une partie", skin);
         hostButton.addListener(new ClickListener() {
             @Override
@@ -131,22 +153,19 @@ public class LobbyScreen implements Screen, NetworkListener {
                 hostGame();
             }
         });
-        table.add(hostButton).width(250).height(60).padBottom(20).colspan(5);
-        table.row();
+        mainTable.add(hostButton).width(250).height(60).padBottom(20).colspan(5);
+        mainTable.row();
 
-        // Séparateur "OU"
         Label orLabel = new Label("--- OU ---", skin);
         orLabel.setFontScale(1.2f);
-        table.add(orLabel).colspan(5).padBottom(15);
-        table.row();
+        mainTable.add(orLabel).colspan(5).padBottom(15);
+        mainTable.row();
 
-        // Champ IP
         ipField = new TextField("localhost", skin);
         ipField.setMessageText("Adresse IP du serveur");
-        table.add(ipField).width(250).height(50).padBottom(20).colspan(5);
-        table.row();
+        mainTable.add(ipField).width(250).height(50).padBottom(20).colspan(5);
+        mainTable.row();
 
-        // Bouton rejoindre
         joinButton = new TextButton("Rejoindre une partie", skin);
         joinButton.addListener(new ClickListener() {
             @Override
@@ -154,19 +173,90 @@ public class LobbyScreen implements Screen, NetworkListener {
                 joinGame();
             }
         });
-        table.add(joinButton).width(250).height(60).colspan(5);
+        mainTable.add(joinButton).width(250).height(60).colspan(5);
     }
 
     /**
-     * SÉLECTIONNER UN PERSONNAGE
+     * ✅ NOUVEAU : METTRE À JOUR LA LISTE DES JOUEURS
      */
+    private void updatePlayerList() {
+        playerListTable.clear();
+
+        if (lobbyPlayers.isEmpty()) {
+            Label emptyLabel = new Label("En attente de joueurs...", skin);
+            emptyLabel.setFontScale(0.8f);
+            playerListTable.add(emptyLabel).pad(10);
+        } else {
+            // En-tête
+            playerListTable.add(new Label("ID", skin)).width(50).padRight(10);
+            playerListTable.add(new Label("Nom", skin)).width(150).padRight(10);
+            playerListTable.add(new Label("Personnage", skin)).width(150).padRight(10);
+            playerListTable.add(new Label("Statut", skin)).width(100);
+            playerListTable.row();
+
+            // Ligne de séparation
+            playerListTable.add(new Label("---", skin)).colspan(4).padBottom(5);
+            playerListTable.row();
+
+            // Chaque joueur
+            for (LobbyStateMessage.LobbyPlayerData player : lobbyPlayers.values()) {
+                // ID
+                Label idLabel = new Label(String.valueOf(player.playerId), skin);
+                playerListTable.add(idLabel).width(50).padRight(10);
+
+                // Nom
+                Label nameLabel = new Label(player.playerName, skin);
+                playerListTable.add(nameLabel).width(150).padRight(10);
+
+                // Personnage
+                String characterName = getCharacterDisplayName(player.characterType);
+                Label charLabel = new Label(characterName, skin);
+                charLabel.setColor(getCharacterColor(player.characterType));
+                playerListTable.add(charLabel).width(150).padRight(10);
+
+                // Statut (Host ou Client)
+                Label statusLabel = new Label(player.isHost ? "[HOST]" : "[Client]", skin);
+                statusLabel.setColor(player.isHost ? Color.GOLD : Color.LIGHT_GRAY);
+                playerListTable.add(statusLabel).width(100);
+
+                playerListTable.row();
+            }
+        }
+    }
+
+    /**
+     * OBTENIR LE NOM D'AFFICHAGE DU PERSONNAGE
+     */
+    private String getCharacterDisplayName(String characterType) {
+        switch (characterType) {
+            case "beige": return "Beige";
+            case "green": return "Vert";
+            case "pink": return "Rose";
+            case "purple": return "Violet";
+            case "yellow": return "Jaune";
+            default: return characterType;
+        }
+    }
+
+    /**
+     * OBTENIR LA COULEUR D'AFFICHAGE DU PERSONNAGE
+     */
+    private Color getCharacterColor(String characterType) {
+        switch (characterType) {
+            case "beige": return new Color(0.8f, 0.7f, 0.5f, 1);
+            case "green": return new Color(0.3f, 0.8f, 0.3f, 1);
+            case "pink": return new Color(1.0f, 0.6f, 0.8f, 1);
+            case "purple": return new Color(0.7f, 0.3f, 0.9f, 1);
+            case "yellow": return new Color(1.0f, 0.9f, 0.3f, 1);
+            default: return Color.WHITE;
+        }
+    }
+
     private void selectCharacter(String character) {
-        // Réinitialiser tous les boutons
         for (TextButton button : characterButtons.values()) {
             button.setColor(Color.WHITE);
         }
 
-        // Mettre en surbrillance le sélectionné (jaune clair)
         TextButton selected = characterButtons.get(character);
         if (selected != null) {
             selected.setColor(1, 1, 0.5f, 1);
@@ -174,6 +264,11 @@ public class LobbyScreen implements Screen, NetworkListener {
 
         selectedCharacter = character;
         System.out.println("Personnage sélectionné : " + character);
+
+        // Envoyer le changement si connecté
+        if (networkManager.isConnected()) {
+            networkManager.sendCharacterChoice(selectedCharacter);
+        }
     }
 
     private void hostGame() {
@@ -181,9 +276,7 @@ public class LobbyScreen implements Screen, NetworkListener {
         hostButton.setDisabled(true);
         joinButton.setDisabled(true);
 
-        // DÉFINIR LE PERSONNAGE AVANT DE SE CONNECTER
         networkManager.setLocalCharacter(selectedCharacter);
-
         networkManager.startHost();
 
         new Thread(() -> {
@@ -211,9 +304,7 @@ public class LobbyScreen implements Screen, NetworkListener {
         hostButton.setDisabled(true);
         joinButton.setDisabled(true);
 
-        // ✅ DÉFINIR LE PERSONNAGE AVANT DE SE CONNECTER
         networkManager.setLocalCharacter(selectedCharacter);
-
         connectionCheckStarted = true;
         networkManager.connectToHost(ip);
     }
@@ -223,15 +314,12 @@ public class LobbyScreen implements Screen, NetworkListener {
         Gdx.gl.glClearColor(0.1f, 0.1f, 0.2f, 1);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
-        // Vérifier connexion SANS boucle infinie
+        // Vérifier connexion
         if (connectionCheckStarted && networkManager.isConnected() && !gameScreenCreated) {
-            gameScreenCreated = true; // Empêcher les créations multiples
+            gameScreenCreated = true;
 
-            System.out.println("[LOBBY] Connexion détectée, création GameScreen unique");
-
+            System.out.println("✅ [LOBBY] Connexion détectée, création GameScreen unique");
             statusMessage = "Connecte! Chargement du jeu...";
-
-            // Créer le GameScreen
             game.setScreen(new GameScreen(game, networkManager, selectedCharacter));
             return;
         }
@@ -245,11 +333,21 @@ public class LobbyScreen implements Screen, NetworkListener {
         batch.end();
     }
 
-    // IMPLÉMENTATION NETWORKLISTENER
+    // ✅ NOUVEAU : RÉCEPTION DE L'ÉTAT DU LOBBY
     @Override
-    public void onConnectedToServer() {
-        // Pas besoin de faire quoi que ce soit ici, géré dans render()
+    public void onLobbyStateReceived(LobbyStateMessage message) {
+        Gdx.app.postRunnable(() -> {
+            System.out.println("📋 [LOBBY] État reçu : " + message.players.size() + " joueurs");
+
+            lobbyPlayers.clear();
+            lobbyPlayers.putAll(message.players);
+
+            updatePlayerList();
+        });
     }
+
+    @Override
+    public void onConnectedToServer() {}
 
     @Override
     public void onPlayerJoined(PlayerJoinMessage message) {
@@ -272,6 +370,8 @@ public class LobbyScreen implements Screen, NetworkListener {
             joinButton.setDisabled(false);
             connectionCheckStarted = false;
             gameScreenCreated = false;
+            lobbyPlayers.clear();
+            updatePlayerList();
         });
     }
 
@@ -305,28 +405,20 @@ public class LobbyScreen implements Screen, NetworkListener {
     public void onPlayerRespawned(PlayerRespawnMessage message) {}
 
     @Override
-    public void onPlayerCharacterChanged(PlayerCharacterMessage message) {
-        // Pas utilisé dans le lobby
-    }
+    public void onPlayerCharacterChanged(PlayerCharacterMessage message) {}
 
-    /**
-     * SKIN - Style original simple
-     */
     private Skin getSkin() {
         Skin skin = new Skin();
 
-        // Police
         BitmapFont font = new BitmapFont();
         skin.add("default-font", font);
 
-        // Texture blanche
         Pixmap pixmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
         pixmap.setColor(Color.WHITE);
         pixmap.fill();
         skin.add("white", new Texture(pixmap));
         pixmap.dispose();
 
-        // Style TextButton
         TextButton.TextButtonStyle buttonStyle = new TextButton.TextButtonStyle();
         buttonStyle.up = skin.newDrawable("white", Color.DARK_GRAY);
         buttonStyle.down = skin.newDrawable("white", Color.GRAY);
@@ -334,7 +426,6 @@ public class LobbyScreen implements Screen, NetworkListener {
         buttonStyle.font = skin.getFont("default-font");
         skin.add("default", buttonStyle);
 
-        // Style TextField
         TextField.TextFieldStyle textFieldStyle = new TextField.TextFieldStyle();
         textFieldStyle.font = skin.getFont("default-font");
         textFieldStyle.fontColor = Color.WHITE;
@@ -343,7 +434,6 @@ public class LobbyScreen implements Screen, NetworkListener {
         textFieldStyle.selection = skin.newDrawable("white", Color.BLUE);
         skin.add("default", textFieldStyle);
 
-        // Style Label
         Label.LabelStyle labelStyle = new Label.LabelStyle();
         labelStyle.font = skin.getFont("default-font");
         labelStyle.fontColor = Color.WHITE;

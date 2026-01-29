@@ -796,6 +796,9 @@ public class NetworkManager {
         // CLASSES DE BASE
         kryo.register(NetworkMessage.class);
 
+        kryo.register(LobbyStateMessage.class);
+        kryo.register(LobbyStateMessage.LobbyPlayerData.class);
+
         // MESSAGES
         kryo.register(PlayerJoinMessage.class);
         kryo.register(PlayerInputMessage.class);
@@ -831,6 +834,36 @@ public class NetworkManager {
         // Respawn
         kryo.register(PlayerRespawnMessage.class);
     }
+
+    /**
+     * ENVOYER L'ÉTAT DU LOBBY À TOUS LES CLIENTS
+     */
+    private void sendLobbyStateToAll() {
+        if (server == null || !isHost) return;
+
+        LobbyStateMessage lobbyState = new LobbyStateMessage();
+
+        // Construire la liste des joueurs
+        for (Map.Entry<Integer, String> entry : playerCharacters.entrySet()) {
+            int playerId = entry.getKey();
+            String characterType = entry.getValue();
+            String playerName = "Player " + playerId;
+            boolean isHostPlayer = (playerId == 1); // Le premier joueur est le host
+
+            LobbyStateMessage.LobbyPlayerData playerData = new LobbyStateMessage.LobbyPlayerData(
+                playerId,
+                playerName,
+                characterType,
+                isHostPlayer
+            );
+
+            lobbyState.players.put(playerId, playerData);
+        }
+
+        System.out.println("[SERVEUR] Envoi état lobby : " + lobbyState.players.size() + " joueurs");
+        server.sendToAllTCP(lobbyState);
+    }
+
     /**
      * ENVOYER MESSAGE DE CONNEXION
      */
@@ -952,6 +985,9 @@ public class NetworkManager {
         sendInitialGameStateToPlayer(connection);
 
         System.out.println("[SERVEUR] Nouveau joueur: " + message.playerName + " (ID: " + newPlayerId + ") - Total: " + connectedPlayers.size());
+
+        // Envoyer l'état du lobby à tous
+        sendLobbyStateToAll();
     }
 
     /**
@@ -1008,6 +1044,9 @@ public class NetworkManager {
         if (server != null) {
             server.sendToAllTCP(message);
         }
+
+        // Mettre à jour le lobby
+        sendLobbyStateToAll();
     }
 
     /**
@@ -1043,6 +1082,9 @@ public class NetworkManager {
 
         // Mettre à jour l'état
         sendGameStateToAll();
+
+        // Mettre à jour le lobby
+        sendLobbyStateToAll();
 
         System.out.println("Joueur déconnecté: " + playerId);
     }
@@ -1114,6 +1156,10 @@ public class NetworkManager {
         } else if (object instanceof PlayerCharacterMessage) {
             if (networkListener != null) {
                 networkListener.onPlayerCharacterChanged((PlayerCharacterMessage) object);
+            }
+        } else if (object instanceof LobbyStateMessage) {
+            if (networkListener != null) {
+                networkListener.onLobbyStateReceived((LobbyStateMessage) object);
             }
         }
     }
