@@ -10,8 +10,13 @@ import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import com.vortexmakers.plateformer.utils.AssetManager;
 import com.vortexmakers.plateformer.utils.Constants;
+import com.vortexmakers.plateformer.utils.PlayerTextures;
 
 public class Player implements GameEntity {
+    // TYPE DE PERSONNAGE
+    private String characterType;
+    private PlayerTextures textures;
+
     private Vector2 position;
     private Vector2 velocity;
     private Rectangle bounds;
@@ -30,19 +35,32 @@ public class Player implements GameEntity {
     private AssetManager assets;
 
     public Player(float startX, float startY) {
+        this(startX, startY, "beige"); // Par défaut : beige
+    }
+
+    /**
+     * CONSTRUCTEUR AVEC CHOIX DE PERSONNAGE
+     */
+    public Player(float startX, float startY, String characterType) {
         position = new Vector2(startX, startY);
         velocity = new Vector2();
         bounds = new Rectangle(position.x, position.y, Constants.PLAYER_WIDTH, Constants.PLAYER_HEIGHT);
         isGrounded = false;
 
+        // Sauvegarder le type
+        this.characterType = characterType;
+
         // RÉCUPÉRATION DE L'ASSETMANAGER
         this.assets = AssetManager.getInstance();
 
+        // Charger les textures du personnage choisi
+        this.textures = assets.getCharacterTextures(characterType);
+
         // TEXTURE INITIALE
-        this.currentTexture = assets.getPlayerIdle();
+        this.currentTexture = textures.idle;
         this.currentFrame = new TextureRegion(currentTexture);
 
-        System.out.println("Player créé avec textures");
+        System.out.println("Player créé avec personnage : " + characterType);
     }
 
     @Override
@@ -122,8 +140,6 @@ public class Player implements GameEntity {
 
         // Sol (temporaire - sera remplacé par les plateformes)
         if (position.y < 0) {
-            //position.y = 0;
-            //velocity.y = 0;
             isGrounded = true;
         }
     }
@@ -133,16 +149,15 @@ public class Player implements GameEntity {
     }
 
     public void updateAnimation(float delta) {
-        // ✅ DÉTECTION D'ÉTAT CLAIRE
+        // Détection d'état claire
         boolean isMovingHorizontally = Math.abs(velocity.x) > 5f;
 
-        // ✅ CORRECTION PRINCIPALE : Priorité claire des animations
+        // CORRECTION PRINCIPALE : Priorité claire des animations
         if (!isGrounded) {
             // EN L'AIR : Afficher toujours le saut
-            if (currentTexture != assets.getPlayerJump()) {
-                currentTexture = assets.getPlayerJump();
+            if (currentTexture != textures.jump) {
+                currentTexture = textures.jump;
             }
-            // Ne PAS toucher au timer de marche
 
         } else {
             // AU SOL : Idle ou marche
@@ -152,15 +167,15 @@ public class Player implements GameEntity {
                 if (walkAnimationTimer >= Constants.WALK_ANIMATION_SPEED) {
                     walkAnimationTimer = 0f;
 
-                    if (currentTexture == assets.getPlayerWalkA()) {
-                        currentTexture = assets.getPlayerWalkB();
+                    if (currentTexture == textures.walkA) {
+                        currentTexture = textures.walkB;
                     } else {
-                        currentTexture = assets.getPlayerWalkA();
+                        currentTexture = textures.walkA;
                     }
                 }
             } else {
                 // ANIMATION IDLE
-                currentTexture = assets.getPlayerIdle();
+                currentTexture = textures.idle;
                 walkAnimationTimer = 0f;
             }
         }
@@ -197,6 +212,28 @@ public class Player implements GameEntity {
             scale,                                  // Échelle Y
             0                                       // Rotation
         );
+    }
+
+    /**
+     * CHANGER LE TYPE DE PERSONNAGE
+     * Utile si on veut permettre de changer en jeu (futur)
+     */
+    public void setCharacterType(String newCharacterType) {
+        if (!assets.hasCharacter(newCharacterType)) {
+            System.err.println("Personnage inconnu : " + newCharacterType);
+            return;
+        }
+
+        this.characterType = newCharacterType;
+        this.textures = assets.getCharacterTextures(newCharacterType);
+        this.currentTexture = textures.idle;
+        this.currentFrame = new TextureRegion(currentTexture);
+
+        System.out.println("Personnage changé vers : " + newCharacterType);
+    }
+
+    public String getCharacterType() {
+        return characterType;
     }
 
     // Getters pour les collisions

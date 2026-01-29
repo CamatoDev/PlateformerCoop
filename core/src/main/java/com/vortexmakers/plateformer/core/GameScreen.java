@@ -7,7 +7,7 @@ import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
-import com.badlogic.gdx.utils.Array;
+import com.vortexmakers.plateformer.entities.Spike;
 import com.vortexmakers.plateformer.entities.Collectible;
 import com.vortexmakers.plateformer.entities.FinishFlag;
 import com.vortexmakers.plateformer.entities.Player;
@@ -33,6 +33,8 @@ public class GameScreen implements Screen, NetworkListener {
     // JOUEURS
     private Player localPlayer;  // Notre joueur local
     private Map<Integer, Player> remotePlayers;  // Joueurs distants
+    // MAP : PlayerID → Type de personnage
+    private Map<Integer, String> playerCharacters;
 
     // Données du joueur local
     private int localPlayerId = -1;
@@ -51,6 +53,8 @@ public class GameScreen implements Screen, NetworkListener {
 
     // COLLECTIBLES CLIENT
     private Map<Integer, Collectible> clientCollectibles;
+    // SPIKES CLIENT
+    private Map<Integer, Spike> clientSpikes;
 
     // DRAPEAU DE FIN
     private FinishFlag finishFlag;
@@ -88,32 +92,49 @@ public class GameScreen implements Screen, NetworkListener {
     private int localPlayerScore = 0;
     private Map<Integer, Integer> remotePlayerScores; // Score de chaque joueur distant
 
+    /// Transition vers les écrans de victoire où de défaite
     private boolean transitioningToWin = false;
     private boolean transitioningToGameOver = false;
 
-    public GameScreen(PlateformerGame game, NetworkManager networkManager) {
-        System.out.println("🎮 CREATION GameScreen - ID: " + networkManager.getLocalPlayerId());
+    private List<PlayerJoinMessage> pendingJoinMessages;
+
+    // INVINCIBILITÉ APRÈS RESPAWN
+    private boolean localPlayerInvincible = false;
+    private float invincibilityTimer = 0f;
+    private static final float INVINCIBILITY_DURATION = 2.0f; // 2 secondes
+
+    public GameScreen(PlateformerGame game, NetworkManager networkManager, String selectedCharacter) {
+        System.out.println("🎮 CREATION GameScreen - ID: " + networkManager.getLocalPlayerId() + ", Personnage: " + selectedCharacter);
         this.game = game;
-        // UTILISATION DU SINGLETON
         this.networkManager = NetworkManager.getInstance();
         this.networkManager.setNetworkListener(this);
 
-        // Réinitialiser EXPLICITEMENT les flags à chaque création
+        // Réinitialiser les flags
         this.transitioningToWin = false;
         this.transitioningToGameOver = false;
 
-        // RÉCUPÉRER NOTRE ID DE JOUEUR
+        // RÉCUPÉRER NOTRE ID
         this.localPlayerId = networkManager.getLocalPlayerId();
 
         // INITIALISATION DES JOUEURS
         this.remotePlayers = new HashMap<>();
 
+        // File d'attente pour messages reçus avant notre ID
+        this.pendingJoinMessages = new ArrayList<>();
+
+        // Initialiser la map des personnages
+        this.playerCharacters = new HashMap<>();
+        this.playerCharacters.put(localPlayerId, selectedCharacter);
+
         // Initialiser les scores
         this.remotePlayerScores = new HashMap<>();
 
-        // INITIALISATION ASSETMANAGER
+        // CHARGER LES ASSETS AVANT TOUT
         this.assets = AssetManager.getInstance();
-        assets.loadAssets(); // CHARGEMENT DES ASSETS (IMPORTANT)
+        if (!assets.areAssetsLoaded()) {
+            assets.loadAssets(); // CHARGEMENT DES ASSETS (IMPORTANT)
+            System.out.println("✅ Assets chargés dans GameScreen");
+        }
 
         // Initialiser les caméras
         gameCamera = new OrthographicCamera();
@@ -125,18 +146,20 @@ public class GameScreen implements Screen, NetworkListener {
 
         // Créer la police pour l'UI
         uiFont = new BitmapFont();
-        uiFont.getData().setScale(2.0f); // Texte 2x plus grand
+        uiFont.getData().setScale(2.0f);
 
         // Récuperation de textures du background
         this.backgroundSky = assets.getBackgroundSky();
         this.backgroundTrees = assets.getBackgroundTrees();
         this.backgroundClouds = assets.getBackgroundClouds();
 
-        // Création des entités
-        localPlayer = new Player(50, 300);  // CRÉATION DU JOUEUR LOCAL
-        // ✅ MODIFICATION: Initialiser la Map
+        // ✅ MODIFICATION : Créer le joueur APRÈS le chargement des assets
+        localPlayer = new Player(50, 300, selectedCharacter);
+
+        // Initialiser la Map
         this.clientPlatforms = new HashMap<>();
         this.clientCollectibles = new HashMap<>();
+        this.clientSpikes = new HashMap<>();
 
         // Initialiser
         this.playersWhoFinishedLevel = new HashSet<>();
@@ -185,6 +208,7 @@ public class GameScreen implements Screen, NetworkListener {
         renderPlatforms();
 
         renderCollectibles();
+        renderSpikes();
 
         // Dessiner le drapeau
         if (finishFlag != null) {
@@ -221,10 +245,19 @@ public class GameScreen implements Screen, NetworkListener {
      * METTRE À JOUR LE JOUEUR LOCAL (inputs seulement)
      */
     private void update(float delta) {
+        // Mise à jour du timer d'invincibilité
+        if (localPlayerInvincible) {
+            invincibilityTimer -= delta;
+            if (invincibilityTimer <= 0) {
+                localPlayerInvincible = false;
+                System.out.println("[CLIENT] Invincibilité terminée");
+            }
+        }
+
         // Vérifier si le temps est écoulé
         if (gameTimer >= levelTimeLimit && !transitioningToGameOver && !transitioningToWin) {
             transitioningToGameOver = true;
-            System.out.println("⏰ Temps écoulé ! Game Over");
+            System.out.println("Temps écoulé ! Game Over");
 
             // Petit délai avant transition
             new Thread(() -> {
@@ -456,12 +489,34 @@ public class GameScreen implements Screen, NetworkListener {
     }
 
     private void renderPlayers() {
-        // DESSINER LE JOUEUR LOCAL
-        localPlayer.render(batch);
+        // Effet visuel invincibilité
+        if (localPlayerInvincible) {
+            // Clignotement : alternance visible/invisible
+            boolean visible = ((int)(invincibilityTimer * 10) % 2 == 0);
+            if (visible) {
+                // Teinte légèrement bleue pour indiquer l'invincibilité
+                batch.setColor(0.5f, 0.8f, 1.0f, 0.8f);
+                localPlayer.render(batch);
+                batch.setColor(1, 1, 1, 1); // Réinitialiser
+            }
+            // Si !visible, ne pas dessiner (effet clignotement)
+        } else {
+            // Normal
+            localPlayer.render(batch);
+        }
 
-        // DESSINER LES JOUEURS DISTANTS
+        // DESSINER LES JOUEURS DISTANTS (normalement)
         for (Player remotePlayer : remotePlayers.values()) {
             remotePlayer.render(batch);
+        }
+    }
+
+    /**
+     * RENDU DES SPIKES
+     */
+    private void renderSpikes() {
+        for (Spike spike : clientSpikes.values()) {
+            spike.render(batch);
         }
     }
 
@@ -512,38 +567,95 @@ public class GameScreen implements Screen, NetworkListener {
         return String.format("%02d:%02d", minutes, secs);
     }
 
+    /**
+     * CRÉER UN JOUEUR DISTANT
+     */
+    private void createRemotePlayer(PlayerJoinMessage message) {
+        System.out.println("[CLIENT] ✅ Création joueur distant ID: " + message.playerId);
+
+        // Utiliser le personnage du message
+        String characterType = message.characterType != null ? message.characterType : "beige";
+        playerCharacters.put(message.playerId, characterType);
+
+        System.out.println("[CLIENT] ✅ Personnage : " + characterType);
+        System.out.println("[CLIENT] ✅ Position : X=" + message.startX + ", Y=" + message.startY);
+
+        Player remotePlayer = new Player(message.startX, message.startY, characterType);
+        remotePlayers.put(message.playerId, remotePlayer);
+
+        System.out.println("[CLIENT] ✅ Total joueurs distants: " + remotePlayers.size());
+        System.out.println("[CLIENT] ✅ IDs joueurs distants: " + remotePlayers.keySet());
+    }
+
+    private void processPendingPlayerJoin(PlayerJoinMessage message) {
+        System.out.println("[CLIENT] 📦 Traitement message en attente - Joueur ID: " + message.playerId);
+
+        // C'est notre propre ID (déjà traité)
+        if (message.playerId == localPlayerId) {
+            System.out.println("[CLIENT] C'était notre propre message, ignoré");
+            return;
+        }
+
+        // Le joueur existe déjà
+        if (remotePlayers.containsKey(message.playerId)) {
+            System.out.println("[CLIENT] Joueur " + message.playerId + " existe déjà, ignoré");
+            return;
+        }
+
+        // Créer le joueur distant
+        createRemotePlayer(message);
+    }
 
     @Override
     public void onPlayerJoined(PlayerJoinMessage message) {
         Gdx.app.postRunnable(() -> {
-            System.out.println("📥 [CLIENT " + localPlayerId + "] Joueur rejoint: " + message.playerName + " (ID: " + message.playerId + ")");
+            System.out.println("🔥 [CLIENT " + localPlayerId + "] Joueur rejoint: " + message.playerName + " (ID: " + message.playerId + ")");
+            System.out.println("   → Personnage reçu: " + message.characterType);
 
-            // ✅ CAS 1 : C'est notre propre message de confirmation d'ID
-            if (localPlayerId == -1 && message.playerId != -1) {
-                // C'est forcément NOTRE confirmation (on n'avait pas d'ID avant)
-                System.out.println("[CLIENT] Confirmation de notre ID: " + message.playerId);
-                localPlayerId = message.playerId;
-                return; // Ne pas créer de joueur pour nous-même
+            // ✅ CAS 1 : On n'a pas encore notre ID
+            if (localPlayerId == -1) {
+                // Si c'est un message avec un ID valide, c'est probablement NOTRE confirmation
+                if (message.playerId != -1) {
+                    localPlayerId = message.playerId;
+                    System.out.println("[CLIENT] ✅ Confirmation de notre ID: " + message.playerId);
+
+                    // Sauvegarder NOTRE personnage
+                    if (message.characterType != null) {
+                        playerCharacters.put(message.playerId, message.characterType);
+                        System.out.println("[CLIENT] Notre personnage confirmé : " + message.characterType);
+                    }
+
+                    // ✅ NOUVEAU : Traiter les messages en attente
+                    if (!pendingJoinMessages.isEmpty()) {
+                        System.out.println("[CLIENT] 📦 Traitement de " + pendingJoinMessages.size() + " messages en attente");
+                        for (PlayerJoinMessage pendingMsg : pendingJoinMessages) {
+                            processPendingPlayerJoin(pendingMsg);
+                        }
+                        pendingJoinMessages.clear();
+                    }
+                    return;
+                } else {
+                    // Message sans ID valide et on n'a pas encore notre ID → Mettre en attente
+                    System.out.println("[CLIENT] ⏳ Message en attente (pas encore d'ID local)");
+                    pendingJoinMessages.add(message);
+                    return;
+                }
             }
 
-            // ✅ CAS 2 : C'est notre propre ID (message en double)
+            // CAS 2 : C'est notre propre ID (message en double)
             if (message.playerId == localPlayerId) {
                 System.out.println("[CLIENT] Notre propre ID reçu en double, ignoré");
                 return;
             }
 
-            // ✅ CAS 3 : Le joueur existe déjà (doublon)
+            // CAS 3 : Le joueur existe déjà (doublon)
             if (remotePlayers.containsKey(message.playerId)) {
                 System.out.println("[CLIENT] Joueur " + message.playerId + " existe déjà, ignoré");
                 return;
             }
 
             // ✅ CAS 4 : C'est un nouveau joueur distant (valide)
-            System.out.println("[CLIENT] Création joueur distant ID: " + message.playerId);
-            Player remotePlayer = new Player(message.startX, message.startY);
-            remotePlayers.put(message.playerId, remotePlayer);
-
-            System.out.println("[CLIENT] Total joueurs distants: " + remotePlayers.size());
+            createRemotePlayer(message);
         });
     }
 
@@ -556,6 +668,35 @@ public class GameScreen implements Screen, NetworkListener {
             remotePlayers.remove(message.playerId);
 
             System.out.println("Nombre de joueurs distants: " + remotePlayers.size());
+        });
+    }
+
+    /**
+     * RÉCEPTION D'UN CHANGEMENT DE PERSONNAGE
+     */
+    @Override
+    public void onPlayerCharacterChanged(PlayerCharacterMessage message) {
+        Gdx.app.postRunnable(() -> {
+            System.out.println("[CLIENT] Joueur " + message.playerId + " choisit : " + message.characterType);
+
+            // Sauvegarder le choix
+            playerCharacters.put(message.playerId, message.characterType);
+
+            // Si c'est un joueur distant qui existe déjà, le recréer avec le bon personnage
+            if (message.playerId != localPlayerId) {
+                Player remotePlayer = remotePlayers.get(message.playerId);
+                if (remotePlayer != null) {
+                    // Sauvegarder la position actuelle
+                    float x = remotePlayer.getPosition().x;
+                    float y = remotePlayer.getPosition().y;
+
+                    // Recréer avec le nouveau personnage
+                    remotePlayer.dispose();
+                    remotePlayers.put(message.playerId, new Player(x, y, message.characterType));
+
+                    System.out.println("[CLIENT] Joueur distant " + message.playerId + " recréé avec personnage : " + message.characterType);
+                }
+            }
         });
     }
 
@@ -646,6 +787,58 @@ public class GameScreen implements Screen, NetworkListener {
                             System.out.println("🪙 Score joueur " + collectibleData.collectedByPlayerId + ": " + remotePlayerScores.get(collectibleData.collectedByPlayerId));
                         }
                     }
+                }
+            }
+        });
+    }
+
+    /**
+     * RÉCEPTION DE L'ÉTAT DES SPIKES DU SERVEUR
+     */
+    @Override
+    public void onSpikeStateReceived(SpikeStateMessage message) {
+        Gdx.app.postRunnable(() -> {
+            System.out.println("[CLIENT] Réception " + message.spikes.size() + " spikes");
+
+            clientSpikes.clear();
+
+            for (int i = 0; i < message.spikes.size(); i++) {
+                SpikeStateMessage.SpikeData spikeData = message.spikes.get(i);
+                Spike spike = new Spike(spikeData.x, spikeData.y);
+                clientSpikes.put(i, spike);
+            }
+
+            System.out.println("" + clientSpikes.size() + " spikes créés côté client");
+        });
+    }
+
+    /**
+     * RÉCEPTION D'UN MESSAGE DE RESPAWN
+     */
+    @Override
+    public void onPlayerRespawned(PlayerRespawnMessage message) {
+        Gdx.app.postRunnable(() -> {
+            System.out.println("[CLIENT] Joueur " + message.playerId + " respawn à X: " + message.spawnX + ", Y: " + message.spawnY);
+
+            if (message.playerId == localPlayerId) {
+                // C'est NOTRE respawn
+                localPlayer.setPosition(message.spawnX, message.spawnY);
+                localPlayer.setVelocity(0, 0);
+                localPlayer.setGrounded(false);
+
+                // Activer invincibilité
+                if (message.invincible) {
+                    localPlayerInvincible = true;
+                    invincibilityTimer = INVINCIBILITY_DURATION;
+                    System.out.println("[CLIENT] Invincibilité activée pour " + INVINCIBILITY_DURATION + "s");
+                }
+            } else {
+                // C'est un joueur distant
+                Player remotePlayer = remotePlayers.get(message.playerId);
+                if (remotePlayer != null) {
+                    remotePlayer.setPosition(message.spawnX, message.spawnY);
+                    remotePlayer.setVelocity(0, 0);
+                    remotePlayer.setGrounded(false);
                 }
             }
         });
@@ -830,6 +1023,10 @@ public class GameScreen implements Screen, NetworkListener {
         }
         remotePlayers.clear();
 
+        if (pendingJoinMessages != null) {
+            pendingJoinMessages.clear();
+        }
+
         // Nettoyer les plateformes
         for (Platform platform : clientPlatforms.values()) {
             if (platform != null) {
@@ -845,6 +1042,14 @@ public class GameScreen implements Screen, NetworkListener {
             }
         }
         clientCollectibles.clear();
+
+        // Nettoyer les spikes
+        for (Spike spike : clientSpikes.values()) {
+            if (spike != null) {
+                spike.dispose();
+            }
+        }
+        clientSpikes.clear();
 
         // Nettoyer le drapeau
         if (finishFlag != null) {

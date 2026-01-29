@@ -43,6 +43,7 @@ public class NetworkManager {
     // DONNÉES JOUEURS
     private int localPlayerId = -1;  // Notre ID (assigné par le serveur)
     private String localPlayerName = "Player";
+    private String localPlayerCharacter = "beige"; // Personnage choisi localement
 
     // POUR LE SERVEUR AUTORITAIRE
     private Map<Integer, ServerPlayer> serverPlayers;
@@ -50,6 +51,9 @@ public class NetworkManager {
     // Utiliser PlatformData au lieu de Rectangle
     private List<PlatformStateMessage.PlatformData> serverPlatforms;
     private int nextCollectibleId = 0;
+
+    // SPIKES SERVEUR
+    private List<SpikeStateMessage.SpikeData> serverSpikes;
 
     private boolean initialStateSent = false;
     // TIMING SERVEUR
@@ -59,6 +63,8 @@ public class NetworkManager {
     private Map<Integer, GameStateMessage.PlayerData> connectedPlayers;
     // Pour suivre la dernière séquence reçue de chaque joueur
     private Map<Integer, Integer> lastReceivedSequence;
+    // MAP : PlayerID → Type de personnage
+    private Map<Integer, String> playerCharacters;
 
     // Timer du jeu (géré par le serveur)
     private float serverGameTimer = 0f;
@@ -74,9 +80,11 @@ public class NetworkManager {
     private NetworkManager() {
         this.connectedPlayers = new HashMap<>();
         this.serverPlayers = new HashMap<>();
+        this.playerCharacters = new HashMap<>();
         this.serverCollectibles = new ArrayList<>();
         this.serverPlatforms = new ArrayList<>();
         this.lastReceivedSequence = new HashMap<>();
+        this.serverSpikes = new ArrayList<>();
         System.out.println("NetworkManager créé (Singleton)");
     }
 
@@ -94,6 +102,14 @@ public class NetworkManager {
             instance.disconnect();
             instance = null;
         }
+    }
+
+    /**
+     * DÉFINIR LE PERSONNAGE CHOISI LOCALEMENT (avant connexion)
+     */
+    public void setLocalCharacter(String characterType) {
+        this.localPlayerCharacter = characterType;
+        System.out.println("[CLIENT] Personnage local défini : " + characterType);
     }
 
     /**
@@ -163,6 +179,9 @@ public class NetworkManager {
         // CRÉATION DES PLATFORM SERVEUR
         createServerPlatforms();
 
+        // CRÉATION DES SPIKES SERVEUR
+        createServerSpikes();
+
         // Initialiser le set de joueurs finis
         playersWhoFinished = new HashSet<>();
 
@@ -175,6 +194,38 @@ public class NetworkManager {
     }
 
     /**
+     * FAIRE RESPAWN UN JOUEUR
+     */
+    private void respawnPlayer(ServerPlayer serverPlayer) {
+        // Position de spawn (début du niveau)
+        float spawnX = 50f;
+        float spawnY = 300f;
+
+        // Téléporter le joueur
+        serverPlayer.x = spawnX;
+        serverPlayer.y = spawnY;
+        serverPlayer.velocityX = 0;
+        serverPlayer.velocityY = 0;
+        serverPlayer.isGrounded = false;
+        serverPlayer.updateBounds();
+
+        System.out.println("[SERVEUR] Joueur " + serverPlayer.playerId + " respawn à X: " + spawnX + ", Y: " + spawnY);
+
+        // Envoyer message de respawn à tous les clients
+        PlayerRespawnMessage respawnMessage = new PlayerRespawnMessage(
+            serverPlayer.playerId,
+            spawnX,
+            spawnY,
+            true // Invincible pendant 2 secondes
+        );
+
+        if (server != null) {
+            server.sendToAllTCP(respawnMessage);
+        }
+    }
+
+
+    /**
      * CRÉATION DES PLATEFORMES SUR LE SERVEUR
      */
     private void createServerPlatforms() {
@@ -184,11 +235,11 @@ public class NetworkManager {
         // Plateforme de base (sol)
         for (int i = 0; i < 15; i++) {
             serverPlatforms.add(new PlatformStateMessage.PlatformData(
-                i * 200, 0, 200, Constants.PLATFORM_HEIGHT, 0 // type 0 = terrain
+                i * 200, 0, 160, Constants.PLATFORM_HEIGHT, 0 // type 0 = terrain
             ));
         }
 
-        // Quelques plateformes de test
+        // Quelques plateformes
         serverPlatforms.add(new PlatformStateMessage.PlatformData(200, 80, 100, Constants.PLATFORM_HEIGHT, 0));
         serverPlatforms.add(new PlatformStateMessage.PlatformData(580, 150, 100, Constants.PLATFORM_HEIGHT, 0));
         serverPlatforms.add(new PlatformStateMessage.PlatformData(100, 160, 85, Constants.PLATFORM_HEIGHT, 0));
@@ -207,6 +258,25 @@ public class NetworkManager {
         serverPlatforms.add(new PlatformStateMessage.PlatformData(2900, 80, 200, Constants.PLATFORM_HEIGHT, 0));
 
         System.out.println(" " + serverPlatforms.size() + " plateformes créées sur le serveur");
+    }
+
+    /**
+     * CRÉATION DES SPIKES SUR LE SERVEUR
+     */
+    private void createServerSpikes() {
+        serverSpikes.clear();
+
+        // Quelques spikes
+        serverSpikes.add(new SpikeStateMessage.SpikeData(400, 32));
+        serverSpikes.add(new SpikeStateMessage.SpikeData(800, 32));
+        serverSpikes.add(new SpikeStateMessage.SpikeData(1300, 32));
+        serverSpikes.add(new SpikeStateMessage.SpikeData(1600, 32));
+        serverSpikes.add(new SpikeStateMessage.SpikeData(2200, 32));
+        serverSpikes.add(new SpikeStateMessage.SpikeData(600, 32));
+        serverSpikes.add(new SpikeStateMessage.SpikeData(1000, 32));
+        serverSpikes.add(new SpikeStateMessage.SpikeData(1800, 32));
+
+        System.out.println("" + serverSpikes.size() + " spikes créés sur le serveur");
     }
 
     /**
@@ -257,6 +327,12 @@ public class NetworkManager {
                     serverPlayer.applyServerPhysics(Constants.SERVER_UPDATE_INTERVAL);
                     checkServerPlatformCollisions(serverPlayer);
                     checkServerCollectibleCollisions(serverPlayer);
+
+                    // Vérifier chute dans le vide
+                    checkServerFallDeath(serverPlayer);
+
+                    // Vérifier collision avec spikes
+                    checkServerSpikeCollisions(serverPlayer);
 
                     // Vérifier si le joueur atteint le drapeau
                     checkFinishFlagCollision(serverPlayer);
@@ -412,6 +488,34 @@ public class NetworkManager {
     }
 
     /**
+     * VÉRIFIER SI UN JOUEUR TOMBE DANS LE VIDE
+     */
+    private void checkServerFallDeath(ServerPlayer serverPlayer) {
+        final float DEATH_THRESHOLD = -50f; // En dessous de Y = -50 = mort
+
+        if (serverPlayer.y < DEATH_THRESHOLD) {
+            System.out.println("[SERVEUR] Joueur " + serverPlayer.playerId + " est tombé dans le vide !");
+            respawnPlayer(serverPlayer);
+        }
+    }
+
+    /**
+     * VÉRIFIER SI UN JOUEUR TOUCHE UN SPIKE
+     */
+    private void checkServerSpikeCollisions(ServerPlayer serverPlayer) {
+        for (SpikeStateMessage.SpikeData spike : serverSpikes) {
+            // Rectangle du spike (32x32)
+            Rectangle spikeBounds = new Rectangle(spike.x, spike.y, 32f, 32f);
+
+            if (serverPlayer.getBounds().overlaps(spikeBounds)) {
+                System.out.println("[SERVEUR] Joueur " + serverPlayer.playerId + " a touché un spike !");
+                respawnPlayer(serverPlayer);
+                break; // Un spike par frame suffit
+            }
+        }
+    }
+
+    /**
      * VÉRIFIER SI LE JOUEUR ATTEINT LE DRAPEAU
      */
     private void checkFinishFlagCollision(ServerPlayer serverPlayer) {
@@ -460,6 +564,17 @@ public class NetworkManager {
     }
 
     /**
+     * ENVOYER LE CHOIX DE PERSONNAGE AU SERVEUR
+     */
+    public void sendCharacterChoice(String characterType) {
+        if (client != null && client.isConnected()) {
+            PlayerCharacterMessage msg = new PlayerCharacterMessage(localPlayerId, characterType);
+            client.sendTCP(msg);
+            System.out.println("[CLIENT] Envoi choix personnage : " + characterType);
+        }
+    }
+
+    /**
      * ENVOYER L'ÉTAT DES PLATEFORMES À TOUS LES CLIENTS
      */
     private void sendPlatformStateToAll() {
@@ -489,6 +604,24 @@ public class NetworkManager {
             }
         } catch (Exception e) {
             System.err.println("Erreur envoi état collectibles: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * ENVOYER L'ÉTAT DES SPIKES À TOUS LES CLIENTS
+     */
+    private void sendSpikeStateToAll() {
+        try {
+            SpikeStateMessage spikeState = new SpikeStateMessage();
+            spikeState.spikes.addAll(serverSpikes);
+
+            if (server != null && server.getConnections().length > 0) {
+                server.sendToAllTCP(spikeState);
+                System.out.println("[SERVEUR] Spikes envoyés à tous les clients");
+            }
+        } catch (Exception e) {
+            System.err.println("Erreur envoi état spikes: " + e.getMessage());
             e.printStackTrace();
         }
     }
@@ -555,6 +688,13 @@ public class NetworkManager {
             connection.sendTCP(collectibleState);
 
             System.out.println("[SERVEUR] Collectibles envoyés à joueur " + connection.getID());
+
+            // Envoyer les spikes
+            SpikeStateMessage spikeState = new SpikeStateMessage();
+            spikeState.spikes.addAll(serverSpikes);
+            connection.sendTCP(spikeState);
+
+            System.out.println("[SERVEUR] Spikes envoyés à joueur " + connection.getID());
 
             // ÉTAPE 3 : Envoyer l'état du jeu
             GameStateMessage gameState = new GameStateMessage();
@@ -662,6 +802,7 @@ public class NetworkManager {
         kryo.register(GameStateMessage.class);
         kryo.register(GameStateMessage.PlayerData.class);
         kryo.register(PlayerLeaveMessage.class);
+        kryo.register(PlayerCharacterMessage.class);
 
         // Enregistrer CollectibleStateMessage et ses classes internes
         kryo.register(CollectibleStateMessage.class);
@@ -682,22 +823,29 @@ public class NetworkManager {
         // COLLECTIONS
         kryo.register(HashMap.class);
         kryo.register(java.util.ArrayList.class);
+
+        // Spikes
+        kryo.register(SpikeStateMessage.class);
+        kryo.register(SpikeStateMessage.SpikeData.class);
+
+        // Respawn
+        kryo.register(PlayerRespawnMessage.class);
     }
     /**
      * ENVOYER MESSAGE DE CONNEXION
      */
     private void sendJoinMessage() {
-        System.out.println("[CLIENT] Envoi de PlayerJoinMessage...");
+        System.out.println("[CLIENT] Envoi de PlayerJoinMessage avec personnage : " + localPlayerCharacter);
 
-        // Toujours envoyer -1, le serveur assignera le vrai ID
         PlayerJoinMessage joinMessage = new PlayerJoinMessage(
-            -1,  // Le serveur remplacera par le vrai ID
+            -1,
             localPlayerName,
-            50, 300
+            50, 300,
+            localPlayerCharacter
         );
 
         client.sendTCP(joinMessage);
-        System.out.println("[CLIENT] PlayerJoinMessage envoyé, attente confirmation ID...");
+        System.out.println("[CLIENT] PlayerJoinMessage envoyé avec personnage : " + localPlayerCharacter);
     }
 
     /**
@@ -725,6 +873,8 @@ public class NetworkManager {
             handlePlayerJoin(connection, (PlayerJoinMessage) object);
         } else if (object instanceof PlayerInputMessage) {
             handlePlayerInput((PlayerInputMessage) object);
+        } else if (object instanceof PlayerCharacterMessage) {
+            handlePlayerCharacter((PlayerCharacterMessage) object);
         }
     }
 
@@ -745,22 +895,47 @@ public class NetworkManager {
         serverPlayer.isGrounded = true;
         serverPlayers.put(newPlayerId, serverPlayer);
 
-        // ÉTAPE 1 : Confirmation au joueur (TCP pour garantir l'ordre)
-        connection.sendTCP(message);
-        System.out.println("[SERVEUR] Confirmation envoyée à joueur " + newPlayerId);
+        // Utiliser le personnage du message
+        String characterType = message.characterType != null ? message.characterType : "beige";
+        playerCharacters.put(newPlayerId, characterType);
 
-        // ÉTAPE 2 : Envoyer les joueurs existants au nouveau joueur AVANT de broadcaster
+        System.out.println("[SERVEUR] Joueur " + newPlayerId + " rejoint avec personnage : " + characterType);
+
+        // ✅ ÉTAPE 1 : Confirmation au joueur (TCP) - PRIORITAIRE
+        connection.sendTCP(message);
+        System.out.println("[SERVEUR] ✅ Confirmation envoyée à joueur " + newPlayerId);
+
+        // ✅ NOUVEAU : Petit délai pour que la confirmation arrive AVANT les joueurs existants
+        try {
+            Thread.sleep(50); // 50ms de délai
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        // ÉTAPE 2 : Envoyer les joueurs existants AVEC leur personnage
         System.out.println("[SERVEUR] Envoi des " + (connectedPlayers.size() - 1) + " joueurs existants à " + newPlayerId);
         for (Map.Entry<Integer, GameStateMessage.PlayerData> entry : connectedPlayers.entrySet()) {
             if (entry.getKey() != newPlayerId) {
+                // Récupérer le personnage du joueur existant
+                String existingPlayerCharacter = playerCharacters.getOrDefault(entry.getKey(), "beige");
+
                 PlayerJoinMessage existingPlayerMsg = new PlayerJoinMessage(
                     entry.getKey(),
                     entry.getValue().playerName,
                     entry.getValue().x,
-                    entry.getValue().y
+                    entry.getValue().y,
+                    existingPlayerCharacter
                 );
                 connection.sendTCP(existingPlayerMsg);
-                System.out.println("  → Envoi joueur existant ID: " + entry.getKey() + " à " + newPlayerId);
+
+                // ✅ NOUVEAU : Petit délai entre chaque message
+                try {
+                    Thread.sleep(20); // 20ms entre chaque joueur
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+
+                System.out.println("  → Envoi joueur existant ID: " + entry.getKey() + " (" + existingPlayerCharacter + ") à " + newPlayerId);
             }
         }
 
@@ -818,6 +993,21 @@ public class NetworkManager {
         if (message.leftPressed) serverPlayer.currentInputX -= 1;
         if (message.rightPressed) serverPlayer.currentInputX += 1;
         serverPlayer.currentJumpPressed = message.jumpPressed;
+    }
+
+    /**
+     * GÉRER LE CHOIX DE PERSONNAGE (CÔTÉ SERVEUR)
+     */
+    private void handlePlayerCharacter(PlayerCharacterMessage message) {
+        System.out.println("[SERVEUR] Joueur " + message.playerId + " choisit : " + message.characterType);
+
+        // Sauvegarder le choix
+        playerCharacters.put(message.playerId, message.characterType);
+
+        // Diffuser à tous les clients (y compris l'émetteur)
+        if (server != null) {
+            server.sendToAllTCP(message);
+        }
     }
 
     /**
@@ -907,9 +1097,23 @@ public class NetworkManager {
                 networkListener.onGameTimerReceived((GameTimerMessage) object);
             }
         } else if (object instanceof FinishFlagStateMessage) {
-            // ✅ NOUVEAU : Gérer l'état du drapeau
+            // Gérer l'état du drapeau
             if (networkListener != null) {
                 networkListener.onFinishFlagStateReceived((FinishFlagStateMessage) object);
+            }
+        } else if (object instanceof SpikeStateMessage) {
+            // Gérer les spikes
+            if (networkListener != null) {
+                networkListener.onSpikeStateReceived((SpikeStateMessage) object);
+            }
+        } else if (object instanceof PlayerRespawnMessage) {
+            // Gérer le respawn
+            if (networkListener != null) {
+                networkListener.onPlayerRespawned((PlayerRespawnMessage) object);
+            }
+        } else if (object instanceof PlayerCharacterMessage) {
+            if (networkListener != null) {
+                networkListener.onPlayerCharacterChanged((PlayerCharacterMessage) object);
             }
         }
     }
@@ -934,6 +1138,13 @@ public class NetworkManager {
 
     public boolean isConnected() {
         return isConnected;
+    }
+
+    /**
+     * OBTENIR LE TYPE DE PERSONNAGE D'UN JOUEUR
+     */
+    public String getPlayerCharacter(int playerId) {
+        return playerCharacters.getOrDefault(playerId, "beige");
     }
 
     /**
