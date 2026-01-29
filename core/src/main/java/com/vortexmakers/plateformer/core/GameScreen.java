@@ -92,8 +92,11 @@ public class GameScreen implements Screen, NetworkListener {
     private int localPlayerScore = 0;
     private Map<Integer, Integer> remotePlayerScores; // Score de chaque joueur distant
 
+    /// Transition vers les écrans de victoire où de défaite
     private boolean transitioningToWin = false;
     private boolean transitioningToGameOver = false;
+
+    private List<PlayerJoinMessage> pendingJoinMessages;
 
     // INVINCIBILITÉ APRÈS RESPAWN
     private boolean localPlayerInvincible = false;
@@ -115,6 +118,9 @@ public class GameScreen implements Screen, NetworkListener {
 
         // INITIALISATION DES JOUEURS
         this.remotePlayers = new HashMap<>();
+
+        // File d'attente pour messages reçus avant notre ID
+        this.pendingJoinMessages = new ArrayList<>();
 
         // Initialiser la map des personnages
         this.playerCharacters = new HashMap<>();
@@ -561,24 +567,79 @@ public class GameScreen implements Screen, NetworkListener {
         return String.format("%02d:%02d", minutes, secs);
     }
 
+    /**
+     * CRÉER UN JOUEUR DISTANT
+     */
+    private void createRemotePlayer(PlayerJoinMessage message) {
+        System.out.println("[CLIENT] ✅ Création joueur distant ID: " + message.playerId);
+
+        // Utiliser le personnage du message
+        String characterType = message.characterType != null ? message.characterType : "beige";
+        playerCharacters.put(message.playerId, characterType);
+
+        System.out.println("[CLIENT] ✅ Personnage : " + characterType);
+        System.out.println("[CLIENT] ✅ Position : X=" + message.startX + ", Y=" + message.startY);
+
+        Player remotePlayer = new Player(message.startX, message.startY, characterType);
+        remotePlayers.put(message.playerId, remotePlayer);
+
+        System.out.println("[CLIENT] ✅ Total joueurs distants: " + remotePlayers.size());
+        System.out.println("[CLIENT] ✅ IDs joueurs distants: " + remotePlayers.keySet());
+    }
+
+    private void processPendingPlayerJoin(PlayerJoinMessage message) {
+        System.out.println("[CLIENT] 📦 Traitement message en attente - Joueur ID: " + message.playerId);
+
+        // C'est notre propre ID (déjà traité)
+        if (message.playerId == localPlayerId) {
+            System.out.println("[CLIENT] C'était notre propre message, ignoré");
+            return;
+        }
+
+        // Le joueur existe déjà
+        if (remotePlayers.containsKey(message.playerId)) {
+            System.out.println("[CLIENT] Joueur " + message.playerId + " existe déjà, ignoré");
+            return;
+        }
+
+        // Créer le joueur distant
+        createRemotePlayer(message);
+    }
 
     @Override
     public void onPlayerJoined(PlayerJoinMessage message) {
         Gdx.app.postRunnable(() -> {
-            System.out.println("[CLIENT " + localPlayerId + "] Joueur rejoint: " + message.playerName + " (ID: " + message.playerId + ")");
-            System.out.println("Personnage reçu: " + message.characterType);
+            System.out.println("🔥 [CLIENT " + localPlayerId + "] Joueur rejoint: " + message.playerName + " (ID: " + message.playerId + ")");
+            System.out.println("   → Personnage reçu: " + message.characterType);
 
-            // CAS 1 : C'est notre propre message de confirmation d'ID
-            if (localPlayerId == -1 && message.playerId != -1) {
-                System.out.println("[CLIENT] Confirmation de notre ID: " + message.playerId);
-                localPlayerId = message.playerId;
+            // ✅ CAS 1 : On n'a pas encore notre ID
+            if (localPlayerId == -1) {
+                // Si c'est un message avec un ID valide, c'est probablement NOTRE confirmation
+                if (message.playerId != -1) {
+                    localPlayerId = message.playerId;
+                    System.out.println("[CLIENT] ✅ Confirmation de notre ID: " + message.playerId);
 
-                // Sauvegarder NOTRE personnage
-                if (message.characterType != null) {
-                    playerCharacters.put(message.playerId, message.characterType);
-                    System.out.println("[CLIENT] Notre personnage confirmé : " + message.characterType);
+                    // Sauvegarder NOTRE personnage
+                    if (message.characterType != null) {
+                        playerCharacters.put(message.playerId, message.characterType);
+                        System.out.println("[CLIENT] Notre personnage confirmé : " + message.characterType);
+                    }
+
+                    // ✅ NOUVEAU : Traiter les messages en attente
+                    if (!pendingJoinMessages.isEmpty()) {
+                        System.out.println("[CLIENT] 📦 Traitement de " + pendingJoinMessages.size() + " messages en attente");
+                        for (PlayerJoinMessage pendingMsg : pendingJoinMessages) {
+                            processPendingPlayerJoin(pendingMsg);
+                        }
+                        pendingJoinMessages.clear();
+                    }
+                    return;
+                } else {
+                    // Message sans ID valide et on n'a pas encore notre ID → Mettre en attente
+                    System.out.println("[CLIENT] ⏳ Message en attente (pas encore d'ID local)");
+                    pendingJoinMessages.add(message);
+                    return;
                 }
-                return;
             }
 
             // CAS 2 : C'est notre propre ID (message en double)
@@ -593,20 +654,8 @@ public class GameScreen implements Screen, NetworkListener {
                 return;
             }
 
-            // CAS 4 : C'est un nouveau joueur distant (valide)
-            System.out.println("[CLIENT] Création joueur distant ID: " + message.playerId);
-
-            // UTILISER LE PERSONNAGE DU MESSAGE
-            String characterType = message.characterType != null ? message.characterType : "beige";
-            playerCharacters.put(message.playerId, characterType);
-
-            System.out.println("[CLIENT] Création joueur distant avec personnage : " + characterType);
-            System.out.println("[CLIENT] Map playerCharacters après ajout : " + playerCharacters);
-
-            Player remotePlayer = new Player(message.startX, message.startY, characterType);
-            remotePlayers.put(message.playerId, remotePlayer);
-
-            System.out.println("[CLIENT] Total joueurs distants: " + remotePlayers.size());
+            // ✅ CAS 4 : C'est un nouveau joueur distant (valide)
+            createRemotePlayer(message);
         });
     }
 
@@ -973,6 +1022,10 @@ public class GameScreen implements Screen, NetworkListener {
             }
         }
         remotePlayers.clear();
+
+        if (pendingJoinMessages != null) {
+            pendingJoinMessages.clear();
+        }
 
         // Nettoyer les plateformes
         for (Platform platform : clientPlatforms.values()) {

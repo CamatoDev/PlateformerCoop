@@ -901,15 +901,22 @@ public class NetworkManager {
 
         System.out.println("[SERVEUR] Joueur " + newPlayerId + " rejoint avec personnage : " + characterType);
 
-        // ÉTAPE 1 : Confirmation au joueur (TCP)
+        // ✅ ÉTAPE 1 : Confirmation au joueur (TCP) - PRIORITAIRE
         connection.sendTCP(message);
-        System.out.println("[SERVEUR] Confirmation envoyée à joueur " + newPlayerId);
+        System.out.println("[SERVEUR] ✅ Confirmation envoyée à joueur " + newPlayerId);
+
+        // ✅ NOUVEAU : Petit délai pour que la confirmation arrive AVANT les joueurs existants
+        try {
+            Thread.sleep(50); // 50ms de délai
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
 
         // ÉTAPE 2 : Envoyer les joueurs existants AVEC leur personnage
         System.out.println("[SERVEUR] Envoi des " + (connectedPlayers.size() - 1) + " joueurs existants à " + newPlayerId);
         for (Map.Entry<Integer, GameStateMessage.PlayerData> entry : connectedPlayers.entrySet()) {
             if (entry.getKey() != newPlayerId) {
-                // RÉCUPÉRER LE PERSONNAGE DU JOUEUR EXISTANT
+                // Récupérer le personnage du joueur existant
                 String existingPlayerCharacter = playerCharacters.getOrDefault(entry.getKey(), "beige");
 
                 PlayerJoinMessage existingPlayerMsg = new PlayerJoinMessage(
@@ -920,7 +927,15 @@ public class NetworkManager {
                     existingPlayerCharacter
                 );
                 connection.sendTCP(existingPlayerMsg);
-                System.out.println("Envoi joueur existant ID: " + entry.getKey() + " (" + existingPlayerCharacter + ") à " + newPlayerId);
+
+                // ✅ NOUVEAU : Petit délai entre chaque message
+                try {
+                    Thread.sleep(20); // 20ms entre chaque joueur
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+
+                System.out.println("  → Envoi joueur existant ID: " + entry.getKey() + " (" + existingPlayerCharacter + ") à " + newPlayerId);
             }
         }
 
@@ -929,7 +944,7 @@ public class NetworkManager {
         for (Connection conn : server.getConnections()) {
             if (conn.getID() != newPlayerId) {
                 conn.sendTCP(message);
-                System.out.println("Broadcast à joueur ID: " + conn.getID());
+                System.out.println("  → Broadcast à joueur ID: " + conn.getID());
             }
         }
 
