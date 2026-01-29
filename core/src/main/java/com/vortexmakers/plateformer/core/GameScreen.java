@@ -565,12 +565,19 @@ public class GameScreen implements Screen, NetworkListener {
     @Override
     public void onPlayerJoined(PlayerJoinMessage message) {
         Gdx.app.postRunnable(() -> {
-            System.out.println("🔥 [CLIENT " + localPlayerId + "] Joueur rejoint: " + message.playerName + " (ID: " + message.playerId + ")");
+            System.out.println("[CLIENT " + localPlayerId + "] Joueur rejoint: " + message.playerName + " (ID: " + message.playerId + ")");
+            System.out.println("Personnage reçu: " + message.characterType);
 
             // CAS 1 : C'est notre propre message de confirmation d'ID
             if (localPlayerId == -1 && message.playerId != -1) {
                 System.out.println("[CLIENT] Confirmation de notre ID: " + message.playerId);
                 localPlayerId = message.playerId;
+
+                // Sauvegarder NOTRE personnage
+                if (message.characterType != null) {
+                    playerCharacters.put(message.playerId, message.characterType);
+                    System.out.println("[CLIENT] Notre personnage confirmé : " + message.characterType);
+                }
                 return;
             }
 
@@ -589,9 +596,12 @@ public class GameScreen implements Screen, NetworkListener {
             // CAS 4 : C'est un nouveau joueur distant (valide)
             System.out.println("[CLIENT] Création joueur distant ID: " + message.playerId);
 
-            // UTILISER LE PERSONNAGE DU MESSAGE (pas getOrDefault)
+            // UTILISER LE PERSONNAGE DU MESSAGE
             String characterType = message.characterType != null ? message.characterType : "beige";
             playerCharacters.put(message.playerId, characterType);
+
+            System.out.println("[CLIENT] Création joueur distant avec personnage : " + characterType);
+            System.out.println("[CLIENT] Map playerCharacters après ajout : " + playerCharacters);
 
             Player remotePlayer = new Player(message.startX, message.startY, characterType);
             remotePlayers.put(message.playerId, remotePlayer);
