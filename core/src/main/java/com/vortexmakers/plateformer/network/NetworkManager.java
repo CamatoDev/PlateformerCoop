@@ -72,7 +72,7 @@ public class NetworkManager {
     private boolean serverTimerStarted = false;
 
     // Drapeau de fin
-    private float finishFlagX = 2800f; // Position X du drapeau (près de la fin du monde)
+    private float finishFlagX = 4800f; // Position X du drapeau (près de la fin du monde)
     private float finishFlagY = 32f;   // Position Y (sur le sol)
     private Set<Integer> playersWhoFinished = new HashSet<>();
 
@@ -229,35 +229,119 @@ public class NetworkManager {
      * CRÉATION DES PLATEFORMES SUR LE SERVEUR
      */
     private void createServerPlatforms() {
-        serverPlatforms.clear(); // S'assurer que c'est vide
+        serverPlatforms.clear();
 
-        // UTILISER PlatformData DIRECTEMENT
-        // Plateforme de base (sol)
-        for (int i = 0; i < 15; i++) {
+        // ========================================
+        // ZONE DE DÉPART (0-500)
+        // ========================================
+        // Sol continu pour bien démarrer
+        for (int i = 0; i < 3; i++) {
             serverPlatforms.add(new PlatformStateMessage.PlatformData(
-                i * 200, 0, 160, Constants.PLATFORM_HEIGHT, 0 // type 0 = terrain
+                i * 200, 0, 200, Constants.PLATFORM_HEIGHT, 0
             ));
         }
 
-        // Quelques plateformes
-        serverPlatforms.add(new PlatformStateMessage.PlatformData(200, 80, 100, Constants.PLATFORM_HEIGHT, 0));
-        serverPlatforms.add(new PlatformStateMessage.PlatformData(580, 150, 100, Constants.PLATFORM_HEIGHT, 0));
-        serverPlatforms.add(new PlatformStateMessage.PlatformData(100, 160, 85, Constants.PLATFORM_HEIGHT, 0));
-        serverPlatforms.add(new PlatformStateMessage.PlatformData(720, 80, 120, Constants.PLATFORM_HEIGHT, 0));
-        serverPlatforms.add(new PlatformStateMessage.PlatformData(500, Constants.PLATFORM_HEIGHT, 32, 80, 1)); // type 1 = block
+        // Première plateforme en hauteur (escalier)
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(200, 80, 120, Constants.PLATFORM_HEIGHT, 0));
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(350, 140, 120, Constants.PLATFORM_HEIGHT, 0));
 
-        // Nouvelle plateforme loin à droite
-        serverPlatforms.add(new PlatformStateMessage.PlatformData(1150, 80, 400, Constants.PLATFORM_HEIGHT, 0));
-        serverPlatforms.add(new PlatformStateMessage.PlatformData(1400, 160, 100, Constants.PLATFORM_HEIGHT, 0));
-        serverPlatforms.add(new PlatformStateMessage.PlatformData(1700, 160, 150, Constants.PLATFORM_HEIGHT, 0));
+        // ========================================
+        // SECTION 1 : SAUTS ET TROUS (500-1200)
+        // ========================================
+        // Premier trou (600-750)
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(500, 0, 100, Constants.PLATFORM_HEIGHT, 0));
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(750, 0, 150, Constants.PLATFORM_HEIGHT, 0));
 
-        // Ajoutons encore plus de plateformes
-        serverPlatforms.add(new PlatformStateMessage.PlatformData(2000, 200, 200, Constants.PLATFORM_HEIGHT, 0));
-        serverPlatforms.add(new PlatformStateMessage.PlatformData(2300, 100, 150, Constants.PLATFORM_HEIGHT, 0));
-        serverPlatforms.add(new PlatformStateMessage.PlatformData(2600, 150, 120, Constants.PLATFORM_HEIGHT, 0));
-        serverPlatforms.add(new PlatformStateMessage.PlatformData(2900, 80, 200, Constants.PLATFORM_HEIGHT, 0));
+        // Chemin en hauteur
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(620, 150, 100, Constants.PLATFORM_HEIGHT, 0));
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(730, 180, 80, Constants.PLATFORM_HEIGHT, 0));
 
-        System.out.println(" " + serverPlatforms.size() + " plateformes créées sur le serveur");
+        // Deuxième trou (900-1050)
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(900, 0, 150, Constants.PLATFORM_HEIGHT, 0));
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(1050, 0, 150, Constants.PLATFORM_HEIGHT, 0));
+
+        // Plateformes flottantes
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(950, 120, 120, Constants.PLATFORM_HEIGHT, 0));
+
+        // ========================================
+        // SECTION 2 : ZONE HAUTE (1200-2000)
+        // ========================================
+        // Sol avec plusieurs trous
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(1200, 0, 200, Constants.PLATFORM_HEIGHT, 0));
+        // Trou 1400-1550
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(1550, 0, 150, Constants.PLATFORM_HEIGHT, 0));
+        // Trou 1700-1850
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(1850, 0, 150, Constants.PLATFORM_HEIGHT, 0));
+
+        // Parcours aérien
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(1250, 140, 100, Constants.PLATFORM_HEIGHT, 0));
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(1380, 200, 120, Constants.PLATFORM_HEIGHT, 0));
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(1550, 160, 100, Constants.PLATFORM_HEIGHT, 0));
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(1700, 220, 130, Constants.PLATFORM_HEIGHT, 0));
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(1880, 180, 100, Constants.PLATFORM_HEIGHT, 0));
+
+        // ========================================
+        // SECTION 3 : LABYRINTHE VERTICAL (2000-3000)
+        // ========================================
+        // Sol discontinu
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(2000, 0, 180, Constants.PLATFORM_HEIGHT, 0));
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(2250, 0, 120, Constants.PLATFORM_HEIGHT, 0));
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(2450, 0, 150, Constants.PLATFORM_HEIGHT, 0));
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(2700, 0, 100, Constants.PLATFORM_HEIGHT, 0));
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(2900, 0, 100, Constants.PLATFORM_HEIGHT, 0));
+
+        // Tours de plateformes (plusieurs chemins possibles)
+        // Tour 1
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(2050, 80, 80, Constants.PLATFORM_HEIGHT, 0));
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(2080, 160, 80, Constants.PLATFORM_HEIGHT, 0));
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(2050, 240, 100, Constants.PLATFORM_HEIGHT, 0));
+
+        // Tour 2
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(2300, 100, 90, Constants.PLATFORM_HEIGHT, 0));
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(2280, 180, 90, Constants.PLATFORM_HEIGHT, 0));
+
+        // Chemin intermédiaire
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(2500, 120, 120, Constants.PLATFORM_HEIGHT, 0));
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(2650, 140, 100, Constants.PLATFORM_HEIGHT, 0));
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(2800, 100, 110, Constants.PLATFORM_HEIGHT, 0));
+
+        // ========================================
+        // SECTION 4 : CHALLENGE FINAL (3000-4800)
+        // ========================================
+        // Alternance sol/trous rapide
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(3000, 0, 150, Constants.PLATFORM_HEIGHT, 0));
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(3250, 0, 100, Constants.PLATFORM_HEIGHT, 0));
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(3450, 0, 120, Constants.PLATFORM_HEIGHT, 0));
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(3650, 0, 100, Constants.PLATFORM_HEIGHT, 0));
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(3850, 0, 150, Constants.PLATFORM_HEIGHT, 0));
+
+        // Grand parcours aérien final
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(3100, 140, 120, Constants.PLATFORM_HEIGHT, 0));
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(3250, 200, 100, Constants.PLATFORM_HEIGHT, 0));
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(3400, 160, 130, Constants.PLATFORM_HEIGHT, 0));
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(3580, 220, 120, Constants.PLATFORM_HEIGHT, 0));
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(3750, 180, 140, Constants.PLATFORM_HEIGHT, 0));
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(3920, 240, 150, Constants.PLATFORM_HEIGHT, 0));
+
+        // Descente vers la fin
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(4100, 200, 120, Constants.PLATFORM_HEIGHT, 0));
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(4250, 140, 100, Constants.PLATFORM_HEIGHT, 0));
+        serverPlatforms.add(new PlatformStateMessage.PlatformData(4380, 80, 120, Constants.PLATFORM_HEIGHT, 0));
+
+        // ========================================
+        // ZONE D'ARRIVÉE (4500-5000)
+        // ========================================
+        // Sol continu jusqu'au drapeau
+        for (int i = 0; i < 6; i++) {
+            serverPlatforms.add(new PlatformStateMessage.PlatformData(
+                4100 + (i * 200), 0, 200, Constants.PLATFORM_HEIGHT, 0
+            ));
+        }
+
+        // Piédestal pour le drapeau
+        //serverPlatforms.add(new PlatformStateMessage.PlatformData(4750, 80, 150, Constants.PLATFORM_HEIGHT, 0));
+
+        System.out.println(serverPlatforms.size() + " plateformes créées sur le serveur");
     }
 
     /**
@@ -266,32 +350,168 @@ public class NetworkManager {
     private void createServerSpikes() {
         serverSpikes.clear();
 
-        // Quelques spikes
-        serverSpikes.add(new SpikeStateMessage.SpikeData(400, 32));
-        serverSpikes.add(new SpikeStateMessage.SpikeData(800, 32));
-        serverSpikes.add(new SpikeStateMessage.SpikeData(1300, 32));
-        serverSpikes.add(new SpikeStateMessage.SpikeData(1600, 32));
-        serverSpikes.add(new SpikeStateMessage.SpikeData(2200, 32));
-        serverSpikes.add(new SpikeStateMessage.SpikeData(600, 32));
-        serverSpikes.add(new SpikeStateMessage.SpikeData(1000, 32));
-        serverSpikes.add(new SpikeStateMessage.SpikeData(1800, 32));
+        // ========================================
+        // SPIKES AU SOL (Y = 32)
+        // ========================================
+        // Zone départ - quelques spikes
+        serverSpikes.add(new SpikeStateMessage.SpikeData(380, 32));
 
-        System.out.println("" + serverSpikes.size() + " spikes créés sur le serveur");
+        // Section 1 - sur les plateformes
+        serverSpikes.add(new SpikeStateMessage.SpikeData(820, 32));
+        serverSpikes.add(new SpikeStateMessage.SpikeData(1100, 32));
+
+        // Section 2 - plus nombreux
+        serverSpikes.add(new SpikeStateMessage.SpikeData(1250, 32));
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(1350, 32));
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(1600, 32));
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(1650, 32));
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(1900, 32));
+        serverSpikes.add(new SpikeStateMessage.SpikeData(1950, 32));
+
+        // Section 3 - challenge
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(2050, 32));
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(2100, 32));
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(2150, 32));
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(2300, 32));
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(2500, 32));
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(2550, 32));
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(2750, 32));
+        serverSpikes.add(new SpikeStateMessage.SpikeData(2950, 32));
+
+        // Section 4 - final difficile
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(3050, 32));
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(3100, 32));
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(3300, 32));
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(3350, 32));
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(3500, 32));
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(3700, 32));
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(3750, 32));
+        serverSpikes.add(new SpikeStateMessage.SpikeData(3900, 32));
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(3950, 32));
+
+        // ========================================
+        // SPIKES SUR PLATEFORMES AÉRIENNES
+        // ========================================
+        // Sur plateformes à Y=80
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(250, 80 + 32)); // Escalier départ
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(2090, 80 + 32)); // Tour
+//
+//        // Sur plateformes à Y=100-120
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(670, 100 + 32));
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(1000, 120 + 32));
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(2340, 100 + 32));
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(2560, 120 + 32));
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(2850, 100 + 32));
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(3150, 140 + 32));
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(4450, 80 + 32)); // Descente finale
+//
+//        // Sur plateformes hautes (Y=140-180)
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(1300, 140 + 32));
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(2120, 160 + 32));
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(3450, 160 + 32));
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(3800, 180 + 32));
+//
+//        // Sur plateformes très hautes (Y=200-240)
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(1430, 200 + 32));
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(1750, 220 + 32));
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(3630, 220 + 32));
+//        serverSpikes.add(new SpikeStateMessage.SpikeData(3970, 240 + 32));
+
+        System.out.println(serverSpikes.size() + " spikes créés sur le serveur");
     }
 
     /**
      * CRÉATION DES COLLECTIBLES SUR LE SERVEUR
      */
     private void createServerCollectibles() {
-        // Mêmes positions que dans GameScreen.createCollectibles()
-        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 250, 120, false, -1));
-        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 600, 180, false, -1));
-        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 780, 100, false, -1));
-        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 1200, 220, false, -1));
-        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 1700, 220, false, -1));
-        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 2050, 250, false, -1));
-        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 400, 250, false, -1));
-        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 1400, 210, false, -1));
+        serverCollectibles.clear();
+
+        // ========================================
+        // ZONE DE DÉPART (0-500) - 8 pièces
+        // ========================================
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 100, 50, false, -1));
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 250, 120, false, -1)); // Sur plateforme haute
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 400, 180, false, -1)); // Sur plateforme haute
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 320, 75, false, -1));
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 450, 75, false, -1));
+
+        // ========================================
+        // SECTION 1 : SAUTS ET TROUS (500-1200) - 12 pièces
+        // ========================================
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 550, 75, false, -1));
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 680, 80, false, -1)); // Au-dessus du trou (saut)
+        //serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 670, 140, false, -1)); // Sur plateforme haute
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 700, 220, false, -1)); // Très haute
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 800, 75, false, -1));
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 850, 75, false, -1));
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 975, 80, false, -1)); // Au-dessus du trou
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 1000, 160, false, -1)); // Sur plateforme haute
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 1100, 75, false, -1));
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 1150, 75, false, -1));
+
+        // ========================================
+        // SECTION 2 : ZONE HAUTE (1200-2000) - 16 pièces
+        // ========================================
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 1300, 75, false, -1));
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 1300, 180, false, -1)); // Haute
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 1475, 80, false, -1)); // Au-dessus du trou
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 1430, 240, false, -1)); // Très haute
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 1600, 40, false, -1));
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 1600, 200, false, -1)); // Haute
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 1775, 80, false, -1)); // Au-dessus du trou
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 1750, 260, false, -1)); // Très haute
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 1900, 40, false, -1));
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 1930, 220, false, -1)); // Haute
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 1950, 40, false, -1));
+
+        // ========================================
+        // SECTION 3 : LABYRINTHE (2000-3000) - 18 pièces
+        // ========================================
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 2100, 40, false, -1));
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 2090, 120, false, -1)); // Tour 1 niveau 1
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 2120, 200, false, -1)); // Tour 1 niveau 2
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 2090, 280, false, -1)); // Tour 1 sommet
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 2300, 40, false, -1));
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 2340, 140, false, -1)); // Tour 2
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 2320, 220, false, -1)); // Tour 2 sommet
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 2500, 40, false, -1));
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 2560, 160, false, -1)); // Haute
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 2700, 180, false, -1)); // Haute
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 2750, 40, false, -1));
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 2850, 140, false, -1)); // Haute
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 2950, 40, false, -1));
+
+        // ========================================
+        // SECTION 4 : CHALLENGE FINAL (3000-4800) - 20 pièces
+        // ========================================
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 3100, 75, false, -1));
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 3150, 180, false, -1)); // Haute
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 3180, 80, false, -1)); // Au-dessus du trou
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 3300, 240, false, -1)); // Très haute
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 3300, 75, false, -1));
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 3380, 80, false, -1)); // Au-dessus du trou
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 3450, 200, false, -1)); // Haute
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 3500, 75, false, -1));
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 3630, 260, false, -1)); // Très haute
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 3700, 75, false, -1));
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 3580, 80, false, -1)); // Au-dessus du trou
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 3800, 220, false, -1)); // Haute
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 3900, 75, false, -1));
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 3970, 280, false, -1)); // Sommet
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 4150, 240, false, -1)); // Descente
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 4300, 180, false, -1)); // Descente
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 4430, 120, false, -1)); // Descente
+
+        // ========================================
+        // ZONE D'ARRIVÉE (4500-4900) - 6 pièces
+        // ========================================
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 4600, 75, false, -1));
+        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 4700, 75, false, -1));
+//        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 4800, 120, false, -1)); // Sur piédestal
+//        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 4850, 120, false, -1)); // Sur piédestal
+//        serverCollectibles.add(new CollectibleStateMessage.CollectibleData(nextCollectibleId++, 4900, 40, false, -1));
+
+        System.out.println(serverCollectibles.size() + " collectibles créés sur le serveur");
     }
 
     /**
