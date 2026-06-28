@@ -165,14 +165,57 @@ public class NetworkManager {
     }
 
     /**
+     * RÉINITIALISER L'ÉTAT DU JEU CÔTÉ SERVEUR POUR UNE NOUVELLE PARTIE
+     * Appelé avant chaque lancement pour éviter que l'état de la partie précédente persiste.
+     */
+    private void resetServerGameState() {
+        System.out.println("[SERVEUR] Réinitialisation de l'état du jeu pour une nouvelle partie...");
+
+        // Remettre le timer à zéro (sinon game over immédiat si partie rejouée)
+        serverGameTimer = 0f;
+        serverTimerStarted = false;
+
+        // Réinitialiser le drapeau de fin
+        playersWhoFinished.clear();
+
+        // Réinitialiser le statut "prêt" (les joueurs devront re-cliquer Prêt)
+        playerReadyStates.clear();
+
+        // Réinitialiser tous les collectibles (pièces)
+        for (CollectibleStateMessage.CollectibleData c : serverCollectibles) {
+            c.collected = false;
+            c.collectedByPlayerId = -1;
+        }
+
+        // Téléporter tous les joueurs au point de départ
+        for (ServerPlayer player : serverPlayers.values()) {
+            player.x = 50f;
+            player.y = 300f;
+            player.velocityX = 0f;
+            player.velocityY = 0f;
+            player.isGrounded = false;
+            player.updateBounds();
+        }
+
+        // Invalider le cache des collectibles et du drapeau (seront mis à jour par l'envoi ci-dessous)
+        cachedCollectibleState = null;
+        cachedFinishFlagState = null;
+
+        System.out.println("[SERVEUR] État réinitialisé : timer=0, " + serverCollectibles.size() + " collectibles reset.");
+    }
+
+    /**
      * ENVOYER LE SIGNAL DE LANCEMENT À TOUS
      */
     private void sendGameStartToAll() {
         if (server == null) return;
 
-        // Démarrer le timer côté serveur maintenant (pas à la connexion du premier joueur)
+        // 0. RÉINITIALISER L'ÉTAT DU JEU (critique pour les parties rejouées)
+        resetServerGameState();
+
+        // Démarrer le timer maintenant
         serverTimerStarted = true;
-        System.out.println("[SERVEUR] Timer démarré au lancement de la partie !");
+        System.out.println("[SERVEUR] Nouvelle partie lancée ! Timer démarré.");
 
         // 1. Envoyer le GameStartMessage dédié à tous les clients
         GameStartMessage startMsg = new GameStartMessage();
@@ -185,7 +228,7 @@ public class NetworkManager {
         sendPlatformStateToAll();
         sendSpikeStateToAll();
 
-        // Collectibles via TCP pour fiabilité au lancement
+        // Collectibles via TCP pour fiabilité au lancement (reset inclus grâce à resetServerGameState)
         try {
             CollectibleStateMessage cs = new CollectibleStateMessage();
             cs.collectibles.addAll(serverCollectibles);
