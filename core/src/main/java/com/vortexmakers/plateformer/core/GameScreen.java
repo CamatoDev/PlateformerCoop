@@ -169,6 +169,47 @@ public class GameScreen implements Screen, NetworkListener {
         playerScore = 0;
 
         physicsSystem = new PhysicsSystem();
+
+        // INITIALISATION DEPUIS LE CACHE RÉSEAU
+        // Les données (plateformes, spikes, collectibles) ont été envoyées par le serveur
+        // pendant le lobby, mais le listener était LobbyScreen (qui les ignorait).
+        // On les récupère ici depuis le cache de NetworkManager.
+        initFromNetworkCache();
+    }
+
+    /**
+     * INITIALISER LE JEU DEPUIS LES DONNÉES MISES EN CACHE PAR NetworkManager
+     * Résout le problème où gameReady restait false car les plateformes
+     * arrivaient pendant le lobby et étaient ignorées.
+     */
+    private void initFromNetworkCache() {
+        System.out.println("[GameScreen] Tentative d'initialisation depuis le cache réseau...");
+
+        PlatformStateMessage cachedPlatforms = networkManager.getCachedPlatformState();
+        if (cachedPlatforms != null) {
+            System.out.println("[GameScreen] Plateformes trouvées dans le cache : " + cachedPlatforms.platforms.size());
+            onPlatformStateReceived(cachedPlatforms);
+        } else {
+            System.out.println("[GameScreen] Aucune plateforme en cache (seront envoyées par le serveur)");
+        }
+
+        SpikeStateMessage cachedSpikes = networkManager.getCachedSpikeState();
+        if (cachedSpikes != null) {
+            System.out.println("[GameScreen] Spikes trouvés dans le cache : " + cachedSpikes.spikes.size());
+            onSpikeStateReceived(cachedSpikes);
+        }
+
+        CollectibleStateMessage cachedCollectibles = networkManager.getCachedCollectibleState();
+        if (cachedCollectibles != null) {
+            System.out.println("[GameScreen] Collectibles trouvés dans le cache : " + cachedCollectibles.collectibles.size());
+            onCollectibleStateReceived(cachedCollectibles);
+        }
+
+        FinishFlagStateMessage cachedFlag = networkManager.getCachedFinishFlagState();
+        if (cachedFlag != null) {
+            System.out.println("[GameScreen] Drapeau trouvé dans le cache");
+            onFinishFlagStateReceived(cachedFlag);
+        }
     }
 
     @Override

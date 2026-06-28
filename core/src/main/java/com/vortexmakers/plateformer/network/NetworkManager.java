@@ -79,6 +79,14 @@ public class NetworkManager {
     private float finishFlagY = 32f;   // Position Y (sur le sol)
     private Set<Integer> playersWhoFinished = new HashSet<>();
 
+    // CACHE DES ÉTATS POUR TRANSITION LOBBY → GAMESCREEN
+    // Les messages arrivent pendant le lobby (listener = LobbyScreen qui les ignore).
+    // On les met en cache ici pour que GameScreen puisse les récupérer à sa création.
+    private PlatformStateMessage cachedPlatformState;
+    private SpikeStateMessage cachedSpikeState;
+    private CollectibleStateMessage cachedCollectibleState;
+    private FinishFlagStateMessage cachedFinishFlagState;
+
     // CONSTRUCTEUR PRIVÉ
     private NetworkManager() {
         this.connectedPlayers = new HashMap<>();
@@ -162,24 +170,34 @@ public class NetworkManager {
     private void sendGameStartToAll() {
         if (server == null) return;
 
-        // On réutilise un GameTimerMessage spécial avec timerStarted=true comme signal
-        // ou plus proprement on crée un message dédié via le listener
-        // Ici on notifie directement via le networkListener pour le host
-        // et on envoie un message TCP aux clients
+        // Démarrer le timer côté serveur maintenant (pas à la connexion du premier joueur)
+        serverTimerStarted = true;
+        System.out.println("[SERVEUR] Timer démarré au lancement de la partie !");
 
-        // Message de lancement : on envoie un GameTimerMessage avec started=true
-        // et currentTime=0 comme convention de "go"
-        GameTimerMessage startMsg = new GameTimerMessage(0f, serverTimeLimit, true);
-        // On va marquer currentTime = -1f comme signal spécial "GAME START"
-        startMsg.currentTime = -1f; // Convention : -1 = signal de lancement
-
+        // 1. Envoyer le GameStartMessage dédié à tous les clients
+        GameStartMessage startMsg = new GameStartMessage();
         server.sendToAllTCP(startMsg);
-        System.out.println("[SERVEUR] Signal de lancement envoyé !");
+        System.out.println("[SERVEUR] GameStartMessage envoyé à tous !");
 
-        // Notifier le host directement
-        if (isHost && networkListener != null) {
-            networkListener.onGameStartReceived();
+        // 2. Re-envoyer l'état initial complet (plateformes, spikes, collectibles, drapeau)
+        // Car ces données ont été reçues pendant le lobby (listener = LobbyScreen qui les ignore).
+        // En les renvoyant ici, le GameScreen (nouveau listener) pourra les traiter.
+        sendPlatformStateToAll();
+        sendSpikeStateToAll();
+
+        // Collectibles via TCP pour fiabilité au lancement
+        try {
+            CollectibleStateMessage cs = new CollectibleStateMessage();
+            cs.collectibles.addAll(serverCollectibles);
+            if (server.getConnections().length > 0) {
+                server.sendToAllTCP(cs);
+            }
+        } catch (Exception e) {
+            System.err.println("Erreur renvoi collectibles au lancement: " + e.getMessage());
         }
+        sendFinishFlagStateToAll();
+
+        System.out.println("[SERVEUR] État initial renvoyé à tous les clients pour le lancement !");
     }
 
     /**
@@ -597,19 +615,14 @@ public class NetworkManager {
             // Toujours mettre à jour et envoyer, même sans joueurs
             if (!serverPlayers.isEmpty()) {
                 // Démarrer le timer dès qu'il y a des joueurs
-                if (!serverTimerStarted) {
-                    serverTimerStarted = true;
-                    System.out.println("[SERVEUR] Timer démarré !");
-                }
-
                 // Incrémenter le timer du serveur
+                // (serverTimerStarted est mis à true uniquement dans sendGameStartToAll())
                 if (serverTimerStarted) {
                     serverGameTimer += Constants.SERVER_UPDATE_INTERVAL;
 
                     // Vérifier si le temps est écoulé
                     if (serverGameTimer >= serverTimeLimit) {
                         System.out.println("[SERVEUR] Temps écoulé ! Game Over");
-                        // TODO : Envoyer message Game Over (Phase 4)
                     }
                 }
                 // APPLIQUER LA PHYSIQUE À TOUS LES JOUEURS
@@ -1126,6 +1139,9 @@ public class NetworkManager {
 
         // PlayerReady
         kryo.register(PlayerReadyMessage.class);
+
+        // GameStart
+        kryo.register(GameStartMessage.class);
     }
 
     /**
@@ -1427,39 +1443,40 @@ public class NetworkManager {
             if (networkListener != null) {
                 networkListener.onPlayerLeft((PlayerLeaveMessage) object);
             }
-        } else if (object instanceof PlatformStateMessage) {
-            // Gérer les plateformes
-            if (networkListener != null) {
-                networkListener.onPlatformStateReceived((PlatformStateMessage) object);
-            }
-        }else if (object instanceof CollectibleStateMessage) {
-            // Gérer les collectible
-            if (networkListener != null) {
-                networkListener.onCollectibleStateReceived((CollectibleStateMessage) object);
-            }
-        } else if (object instanceof GameTimerMessage) {
-            // Gérer le timer
-            GameTimerMessage timerMsg = (GameTimerMessage) object;
+        } else if (object instanceof GameStartMessage) {
+            // Signal de lancement dédié (remplace l'ancienne convention currentTime=-1f)
+            System.out.println("[CLIENT] GameStartMessage reçu → lancement de la partie !");
+            if (networkListener != null) networkListener.onGameStartReceived();
 
-            // Détecter le signal de lancement (currentTime == -1)
-            if (timerMsg.currentTime == -1f) {
-                System.out.println("[CLIENT] Signal de lancement reçu !");
-                if (networkListener != null) networkListener.onGameStartReceived();
-            } else {
-                if (networkListener != null) networkListener.onGameTimerReceived(timerMsg);
-            }
-        } else if (object instanceof FinishFlagStateMessage) {
-            // Gérer l'état du drapeau
+        } else if (object instanceof PlatformStateMessage) {
+            // Mettre en cache ET notifier le listener actuel
+            cachedPlatformState = (PlatformStateMessage) object;
             if (networkListener != null) {
-                networkListener.onFinishFlagStateReceived((FinishFlagStateMessage) object);
+                networkListener.onPlatformStateReceived(cachedPlatformState);
             }
         } else if (object instanceof SpikeStateMessage) {
-            // Gérer les spikes
+            // Mettre en cache ET notifier le listener actuel
+            cachedSpikeState = (SpikeStateMessage) object;
             if (networkListener != null) {
-                networkListener.onSpikeStateReceived((SpikeStateMessage) object);
+                networkListener.onSpikeStateReceived(cachedSpikeState);
             }
+        } else if (object instanceof CollectibleStateMessage) {
+            // Mettre en cache ET notifier le listener actuel
+            cachedCollectibleState = (CollectibleStateMessage) object;
+            if (networkListener != null) {
+                networkListener.onCollectibleStateReceived(cachedCollectibleState);
+            }
+        } else if (object instanceof FinishFlagStateMessage) {
+            // Mettre en cache ET notifier le listener actuel
+            cachedFinishFlagState = (FinishFlagStateMessage) object;
+            if (networkListener != null) {
+                networkListener.onFinishFlagStateReceived(cachedFinishFlagState);
+            }
+        } else if (object instanceof GameTimerMessage) {
+            // Timer normal (plus de convention currentTime=-1f)
+            if (networkListener != null) networkListener.onGameTimerReceived((GameTimerMessage) object);
+
         } else if (object instanceof PlayerRespawnMessage) {
-            // Gérer le respawn
             if (networkListener != null) {
                 networkListener.onPlayerRespawned((PlayerRespawnMessage) object);
             }
@@ -1504,6 +1521,15 @@ public class NetworkManager {
     public String getPlayerCharacter(int playerId) {
         return playerCharacters.getOrDefault(playerId, "beige");
     }
+
+    /**
+     * GETTERS POUR LE CACHE D'ÉTAT
+     * Permettent à GameScreen de récupérer les données reçues pendant le lobby.
+     */
+    public PlatformStateMessage getCachedPlatformState() { return cachedPlatformState; }
+    public SpikeStateMessage getCachedSpikeState() { return cachedSpikeState; }
+    public CollectibleStateMessage getCachedCollectibleState() { return cachedCollectibleState; }
+    public FinishFlagStateMessage getCachedFinishFlagState() { return cachedFinishFlagState; }
 
     /**
      * FERMER LES CONNEXIONS
