@@ -23,4 +23,6 @@ public interface NetworkListener {
     void onConnectedToServer();
     void onDisconnectedFromServer();
     void onConnectionFailed(String reason);
+    void onPlayerReadyStateReceived(LobbyStateMessage message);
+    void onGameStartReceived();
 }

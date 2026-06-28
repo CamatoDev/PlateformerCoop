@@ -133,7 +133,7 @@ public class GameScreen implements Screen, NetworkListener {
         this.assets = AssetManager.getInstance();
         if (!assets.areAssetsLoaded()) {
             assets.loadAssets(); // CHARGEMENT DES ASSETS (IMPORTANT)
-            System.out.println("✅ Assets chargés dans GameScreen");
+            System.out.println("Assets chargés dans GameScreen");
         }
 
         // Initialiser les caméras
@@ -153,7 +153,7 @@ public class GameScreen implements Screen, NetworkListener {
         this.backgroundTrees = assets.getBackgroundTrees();
         this.backgroundClouds = assets.getBackgroundClouds();
 
-        // ✅ MODIFICATION : Créer le joueur APRÈS le chargement des assets
+        // Créer le joueur APRÈS le chargement des assets
         localPlayer = new Player(50, 300, selectedCharacter);
 
         // Initialiser la Map
@@ -299,7 +299,7 @@ public class GameScreen implements Screen, NetworkListener {
      * ENVOYER LES INPUTS BRUTS AU SERVEUR
      */
     private void sendNetworkUpdates(float delta) {
-        // ✅ NOUVEAU : Capturer le saut CHAQUE FRAME (pas seulement au moment d'envoyer)
+        // Capturer le saut CHAQUE FRAME (pas seulement au moment d'envoyer)
         if (Gdx.input.isKeyJustPressed(Input.Keys.SPACE) ||
             Gdx.input.isKeyJustPressed(Input.Keys.W) ||
             Gdx.input.isKeyJustPressed(Input.Keys.UP)) {
@@ -316,7 +316,7 @@ public class GameScreen implements Screen, NetworkListener {
                 boolean leftPressed = Gdx.input.isKeyPressed(Input.Keys.LEFT) || Gdx.input.isKeyPressed(Input.Keys.A);
                 boolean rightPressed = Gdx.input.isKeyPressed(Input.Keys.RIGHT) || Gdx.input.isKeyPressed(Input.Keys.D);
 
-                // ✅ CORRECTION : Utiliser le flag capturé
+                // Utiliser le flag capturé
                 boolean jumpPressed = jumpInputCaptured;
                 jumpInputCaptured = false; // Reset après envoi
 
@@ -471,7 +471,7 @@ public class GameScreen implements Screen, NetworkListener {
     }
 
     private void updateCollectibles() {
-        // ✅ SUPPRESSION IMMÉDIATE des collectibles complètement collectés
+        // SUPPRESSION IMMÉDIATE des collectibles complètement collectés
         Iterator<Map.Entry<Integer, Collectible>> iterator = clientCollectibles.entrySet().iterator();
         while (iterator.hasNext()) {
             Map.Entry<Integer, Collectible> entry = iterator.next();
@@ -479,7 +479,7 @@ public class GameScreen implements Screen, NetworkListener {
 
             collectible.update(Gdx.graphics.getDeltaTime());
 
-            // ✅ SUPPRIMER dès que l'animation est terminée
+            // SUPPRIMER dès que l'animation est terminée
             if (collectible.isFullyCollected()) {
                 collectible.dispose();
                 iterator.remove();
@@ -571,24 +571,24 @@ public class GameScreen implements Screen, NetworkListener {
      * CRÉER UN JOUEUR DISTANT
      */
     private void createRemotePlayer(PlayerJoinMessage message) {
-        System.out.println("[CLIENT] ✅ Création joueur distant ID: " + message.playerId);
+        System.out.println("[CLIENT] Création joueur distant ID: " + message.playerId);
 
         // Utiliser le personnage du message
         String characterType = message.characterType != null ? message.characterType : "beige";
         playerCharacters.put(message.playerId, characterType);
 
-        System.out.println("[CLIENT] ✅ Personnage : " + characterType);
-        System.out.println("[CLIENT] ✅ Position : X=" + message.startX + ", Y=" + message.startY);
+        System.out.println("[CLIENT] Personnage : " + characterType);
+        System.out.println("[CLIENT] Position : X=" + message.startX + ", Y=" + message.startY);
 
         Player remotePlayer = new Player(message.startX, message.startY, characterType);
         remotePlayers.put(message.playerId, remotePlayer);
 
-        System.out.println("[CLIENT] ✅ Total joueurs distants: " + remotePlayers.size());
-        System.out.println("[CLIENT] ✅ IDs joueurs distants: " + remotePlayers.keySet());
+        System.out.println("[CLIENT] Total joueurs distants: " + remotePlayers.size());
+        System.out.println("[CLIENT] IDs joueurs distants: " + remotePlayers.keySet());
     }
 
     private void processPendingPlayerJoin(PlayerJoinMessage message) {
-        System.out.println("[CLIENT] 📦 Traitement message en attente - Joueur ID: " + message.playerId);
+        System.out.println("[CLIENT] Traitement message en attente - Joueur ID: " + message.playerId);
 
         // C'est notre propre ID (déjà traité)
         if (message.playerId == localPlayerId) {
@@ -609,15 +609,15 @@ public class GameScreen implements Screen, NetworkListener {
     @Override
     public void onPlayerJoined(PlayerJoinMessage message) {
         Gdx.app.postRunnable(() -> {
-            System.out.println("🔥 [CLIENT " + localPlayerId + "] Joueur rejoint: " + message.playerName + " (ID: " + message.playerId + ")");
+            System.out.println(" [CLIENT " + localPlayerId + "] Joueur rejoint: " + message.playerName + " (ID: " + message.playerId + ")");
             System.out.println("   → Personnage reçu: " + message.characterType);
 
-            // ✅ CAS 1 : On n'a pas encore notre ID
+            // CAS 1 : On n'a pas encore notre ID
             if (localPlayerId == -1) {
                 // Si c'est un message avec un ID valide, c'est probablement NOTRE confirmation
                 if (message.playerId != -1) {
                     localPlayerId = message.playerId;
-                    System.out.println("[CLIENT] ✅ Confirmation de notre ID: " + message.playerId);
+                    System.out.println("[CLIENT] Confirmation de notre ID: " + message.playerId);
 
                     // Sauvegarder NOTRE personnage
                     if (message.characterType != null) {
@@ -625,9 +625,9 @@ public class GameScreen implements Screen, NetworkListener {
                         System.out.println("[CLIENT] Notre personnage confirmé : " + message.characterType);
                     }
 
-                    // ✅ NOUVEAU : Traiter les messages en attente
+                    // Traiter les messages en attente
                     if (!pendingJoinMessages.isEmpty()) {
-                        System.out.println("[CLIENT] 📦 Traitement de " + pendingJoinMessages.size() + " messages en attente");
+                        System.out.println("[CLIENT] Traitement de " + pendingJoinMessages.size() + " messages en attente");
                         for (PlayerJoinMessage pendingMsg : pendingJoinMessages) {
                             processPendingPlayerJoin(pendingMsg);
                         }
@@ -636,7 +636,7 @@ public class GameScreen implements Screen, NetworkListener {
                     return;
                 } else {
                     // Message sans ID valide et on n'a pas encore notre ID → Mettre en attente
-                    System.out.println("[CLIENT] ⏳ Message en attente (pas encore d'ID local)");
+                    System.out.println("[CLIENT] Message en attente (pas encore d'ID local)");
                     pendingJoinMessages.add(message);
                     return;
                 }
@@ -654,7 +654,7 @@ public class GameScreen implements Screen, NetworkListener {
                 return;
             }
 
-            // ✅ CAS 4 : C'est un nouveau joueur distant (valide)
+            // CAS 4 : C'est un nouveau joueur distant (valide)
             createRemotePlayer(message);
         });
     }
@@ -747,11 +747,11 @@ public class GameScreen implements Screen, NetworkListener {
                 clientPlatforms.put(i, platform);
             }
 
-            // ✅ NOUVEAU : Marquer que les plateformes sont reçues
+            // Marquer que les plateformes sont reçues
             platformsReceived = true;
             gameReady = true;
 
-            System.out.println("✅ " + clientPlatforms.size() + " plateformes créées - Jeu prêt !");
+            System.out.println(" " + clientPlatforms.size() + " plateformes créées - Jeu prêt !");
         });
     }
 
@@ -775,16 +775,16 @@ public class GameScreen implements Screen, NetworkListener {
                     if (!collectible.isFullyCollected() && !collectible.isCollecting()) {
                         collectible.collect();
 
-                        // ✅ NOUVEAU : Mettre à jour le score
+                        // Mettre à jour le score
                         if (collectibleData.collectedByPlayerId == localPlayerId) {
                             localPlayerScore++;
-                            System.out.println("🪙 Score local: " + localPlayerScore);
+                            System.out.println("Score local: " + localPlayerScore);
                         } else {
                             remotePlayerScores.put(
                                 collectibleData.collectedByPlayerId,
                                 remotePlayerScores.getOrDefault(collectibleData.collectedByPlayerId, 0) + 1
                             );
-                            System.out.println("🪙 Score joueur " + collectibleData.collectedByPlayerId + ": " + remotePlayerScores.get(collectibleData.collectedByPlayerId));
+                            System.out.println("Score joueur " + collectibleData.collectedByPlayerId + ": " + remotePlayerScores.get(collectibleData.collectedByPlayerId));
                         }
                     }
                 }
@@ -850,7 +850,7 @@ public class GameScreen implements Screen, NetworkListener {
     @Override
     public void onFinishFlagStateReceived(FinishFlagStateMessage message) {
         Gdx.app.postRunnable(() -> {
-            // ✅ DEBUG : Vérifier l'état des flags
+            //  Vérifier l'état des flags
             System.out.println("[CLIENT] onFinishFlagStateReceived - allPlayersFinished: " + message.allPlayersFinished +
                 ", transitioningToWin: " + transitioningToWin);
 
@@ -872,7 +872,7 @@ public class GameScreen implements Screen, NetworkListener {
             // Si tous ont fini, passer à l'écran de victoire
             if (allPlayersFinished && !transitioningToWin) {
                 transitioningToWin = true;
-                System.out.println("[CLIENT] 🏆 TOUS LES JOUEURS ONT FINI ! Transition vers LevelWinScreen...");
+                System.out.println("[CLIENT] TOUS LES JOUEURS ONT FINI ! Transition vers LevelWinScreen...");
 
                 new Thread(() -> {
                     try {
@@ -894,7 +894,7 @@ public class GameScreen implements Screen, NetworkListener {
     @Override
     public void onGameTimerReceived(GameTimerMessage message) {
         Gdx.app.postRunnable(() -> {
-            // ✅ SYNCHRONISER avec le serveur
+            // SYNCHRONISER avec le serveur
             gameTimer = message.currentTime;
             levelTimeLimit = message.timeLimit;
             timerStarted = message.timerStarted;
@@ -934,11 +934,11 @@ public class GameScreen implements Screen, NetworkListener {
         Gdx.app.postRunnable(() -> {
             System.out.println("🔌 Déconnecté du serveur, retour au menu");
 
-            // ✅ CORRECTION: Nettoyer les joueurs distants
+            // Nettoyer les joueurs distants
             remotePlayers.clear();
             clientCollectibles.clear();
 
-            // ✅ CORRECTION: Attendre un peu avant de retourner au lobby
+            // Attendre un peu avant de retourner au lobby
             new Thread(() -> {
                 try {
                     Thread.sleep(500); // Petit délai pour voir le message
@@ -968,6 +968,12 @@ public class GameScreen implements Screen, NetworkListener {
     public void onLobbyStateReceived(LobbyStateMessage message) {
         // Pas utilisé dans GameScreen, seulement dans LobbyScreen
     }
+
+    @Override
+    public void onPlayerReadyStateReceived(LobbyStateMessage message) {}
+
+    @Override
+    public void onGameStartReceived() {}
 
     @Override
     public void resize(int width, int height) {

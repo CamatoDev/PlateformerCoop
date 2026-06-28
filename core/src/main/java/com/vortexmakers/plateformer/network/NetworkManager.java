@@ -66,6 +66,9 @@ public class NetworkManager {
     // MAP : PlayerID → Type de personnage
     private Map<Integer, String> playerCharacters;
 
+    // Statuts Ready des joueurs
+    private Map<Integer, Boolean> playerReadyStates;
+
     // Timer du jeu (géré par le serveur)
     private float serverGameTimer = 0f;
     private float serverTimeLimit = 180f; // 3 minutes
@@ -85,6 +88,7 @@ public class NetworkManager {
         this.serverPlatforms = new ArrayList<>();
         this.lastReceivedSequence = new HashMap<>();
         this.serverSpikes = new ArrayList<>();
+        this.playerReadyStates = new HashMap<>();
         System.out.println("NetworkManager créé (Singleton)");
     }
 
@@ -110,6 +114,72 @@ public class NetworkManager {
     public void setLocalCharacter(String characterType) {
         this.localPlayerCharacter = characterType;
         System.out.println("[CLIENT] Personnage local défini : " + characterType);
+    }
+
+    /**
+     * ENVOYER NOTRE STATUT PRÊT AU SERVEUR
+     */
+    public void sendReadyState(boolean isReady) {
+        if (client != null && client.isConnected()) {
+            PlayerReadyMessage msg = new PlayerReadyMessage(localPlayerId, isReady);
+            client.sendTCP(msg);
+            System.out.println("[CLIENT] Statut prêt envoyé : " + isReady);
+        }
+    }
+
+    /**
+     * VÉRIFIER SI TOUS LES JOUEURS SONT PRÊTS (côté serveur)
+     */
+    private boolean areAllPlayersReady() {
+        if (playerReadyStates.isEmpty()) return false;
+        if (playerReadyStates.size() < connectedPlayers.size()) return false;
+        for (boolean ready : playerReadyStates.values()) {
+            if (!ready) return false;
+        }
+        return true;
+    }
+
+    /**
+     * GÉRER LE MESSAGE READY (côté serveur)
+     */
+    private void handlePlayerReady(PlayerReadyMessage message) {
+        playerReadyStates.put(message.playerId, message.isReady);
+        System.out.println("[SERVEUR] Joueur " + message.playerId + " ready: " + message.isReady);
+
+        // Mettre à jour le lobby avec les nouveaux statuts
+        sendLobbyStateToAll();
+
+        // Si tous prêts → envoyer signal de lancement
+        if (areAllPlayersReady()) {
+            System.out.println("[SERVEUR] Tous les joueurs sont prêts ! Lancement de la partie...");
+            sendGameStartToAll();
+        }
+    }
+
+    /**
+     * ENVOYER LE SIGNAL DE LANCEMENT À TOUS
+     */
+    private void sendGameStartToAll() {
+        if (server == null) return;
+
+        // On réutilise un GameTimerMessage spécial avec timerStarted=true comme signal
+        // ou plus proprement on crée un message dédié via le listener
+        // Ici on notifie directement via le networkListener pour le host
+        // et on envoie un message TCP aux clients
+
+        // Message de lancement : on envoie un GameTimerMessage avec started=true
+        // et currentTime=0 comme convention de "go"
+        GameTimerMessage startMsg = new GameTimerMessage(0f, serverTimeLimit, true);
+        // On va marquer currentTime = -1f comme signal spécial "GAME START"
+        startMsg.currentTime = -1f; // Convention : -1 = signal de lancement
+
+        server.sendToAllTCP(startMsg);
+        System.out.println("[SERVEUR] Signal de lancement envoyé !");
+
+        // Notifier le host directement
+        if (isHost && networkListener != null) {
+            networkListener.onGameStartReceived();
+        }
     }
 
     /**
@@ -1053,6 +1123,9 @@ public class NetworkManager {
 
         // Respawn
         kryo.register(PlayerRespawnMessage.class);
+
+        // PlayerReady
+        kryo.register(PlayerReadyMessage.class);
     }
 
     /**
@@ -1062,21 +1135,27 @@ public class NetworkManager {
         if (server == null || !isHost) return;
 
         LobbyStateMessage lobbyState = new LobbyStateMessage();
+        lobbyState.allPlayersReady = areAllPlayersReady();
 
-        // Construire la liste des joueurs
-        for (Map.Entry<Integer, String> entry : playerCharacters.entrySet()) {
-            int playerId = entry.getKey();
-            String characterType = entry.getValue();
-            String playerName = "Player " + playerId;
-            boolean isHostPlayer = (playerId == 1); // Le premier joueur est le host
+        // Host en premier, puis les autres
+        List<Integer> orderedIds = new ArrayList<>();
+        for (Integer id : playerCharacters.keySet()) {
+            if (id == 1) orderedIds.add(0, id); // Host (ID=1) en premier
+            else orderedIds.add(id);
+        }
+
+        for (Integer playerId : orderedIds) {
+            String characterType = playerCharacters.get(playerId);
+            boolean isHostPlayer = (playerId == 1);
+            boolean isReady = playerReadyStates.getOrDefault(playerId, false);
 
             LobbyStateMessage.LobbyPlayerData playerData = new LobbyStateMessage.LobbyPlayerData(
                 playerId,
-                playerName,
+                "Player " + playerId,
                 characterType,
-                isHostPlayer
+                isHostPlayer,
+                isReady
             );
-
             lobbyState.players.put(playerId, playerData);
         }
 
@@ -1128,6 +1207,8 @@ public class NetworkManager {
             handlePlayerInput((PlayerInputMessage) object);
         } else if (object instanceof PlayerCharacterMessage) {
             handlePlayerCharacter((PlayerCharacterMessage) object);
+        }else if (object instanceof PlayerReadyMessage) {
+            handlePlayerReady((PlayerReadyMessage) object);
         }
     }
 
@@ -1151,14 +1232,16 @@ public class NetworkManager {
         // Utiliser le personnage du message
         String characterType = message.characterType != null ? message.characterType : "beige";
         playerCharacters.put(newPlayerId, characterType);
+        // Initialiser le statut ready à false
+        playerReadyStates.put(newPlayerId, false);
 
         System.out.println("[SERVEUR] Joueur " + newPlayerId + " rejoint avec personnage : " + characterType);
 
-        // ✅ ÉTAPE 1 : Confirmation au joueur (TCP) - PRIORITAIRE
+        // ÉTAPE 1 : Confirmation au joueur (TCP) - PRIORITAIRE
         connection.sendTCP(message);
-        System.out.println("[SERVEUR] ✅ Confirmation envoyée à joueur " + newPlayerId);
+        System.out.println("[SERVEUR] Confirmation envoyée à joueur " + newPlayerId);
 
-        // ✅ NOUVEAU : Petit délai pour que la confirmation arrive AVANT les joueurs existants
+        // Petit délai pour que la confirmation arrive AVANT les joueurs existants
         try {
             Thread.sleep(50); // 50ms de délai
         } catch (InterruptedException e) {
@@ -1181,7 +1264,7 @@ public class NetworkManager {
                 );
                 connection.sendTCP(existingPlayerMsg);
 
-                // ✅ NOUVEAU : Petit délai entre chaque message
+                // Petit délai entre chaque message
                 try {
                     Thread.sleep(20); // 20ms entre chaque joueur
                 } catch (InterruptedException e) {
@@ -1295,6 +1378,7 @@ public class NetworkManager {
         connectedPlayers.remove(playerId);
         serverPlayers.remove(playerId); // Nettoyer le joueur serveur
         lastReceivedSequence.remove(playerId); // Nettoyer la séquence
+        playerReadyStates.remove(playerId); // Nettoyer le ready state
 
         // Informer tous les clients
         PlayerLeaveMessage leaveMessage = new PlayerLeaveMessage(playerId);
@@ -1355,8 +1439,14 @@ public class NetworkManager {
             }
         } else if (object instanceof GameTimerMessage) {
             // Gérer le timer
-            if (networkListener != null) {
-                networkListener.onGameTimerReceived((GameTimerMessage) object);
+            GameTimerMessage timerMsg = (GameTimerMessage) object;
+
+            // Détecter le signal de lancement (currentTime == -1)
+            if (timerMsg.currentTime == -1f) {
+                System.out.println("[CLIENT] Signal de lancement reçu !");
+                if (networkListener != null) networkListener.onGameStartReceived();
+            } else {
+                if (networkListener != null) networkListener.onGameTimerReceived(timerMsg);
             }
         } else if (object instanceof FinishFlagStateMessage) {
             // Gérer l'état du drapeau
@@ -1378,8 +1468,10 @@ public class NetworkManager {
                 networkListener.onPlayerCharacterChanged((PlayerCharacterMessage) object);
             }
         } else if (object instanceof LobbyStateMessage) {
+            // Routage : lobby state = mise à jour liste + statut ready
             if (networkListener != null) {
                 networkListener.onLobbyStateReceived((LobbyStateMessage) object);
+                networkListener.onPlayerReadyStateReceived((LobbyStateMessage) object);
             }
         }
     }
