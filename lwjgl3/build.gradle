@@ -159,6 +159,93 @@ tasks.register('dist') {
   dependsOn 'jar'
 }
 
+// =============================================
+// PACKAGING WINDOWS ALTERNATIF (via jpackage)
+// =============================================
+// Utilise jpackage, l'outil officiel inclus dans JDK 14+.
+// Crée un exécutable Windows avec JRE embarqué : pas besoin
+// de Java installé sur le PC cible.
+//
+// USAGE : double-cliquez sur "packageWindowsExe" dans le panneau
+//         Gradle → lwjgl3 → Tasks → distribution
+//
+// RÉSULTAT : lwjgl3/build/windows-package/KawaiiVerseCoop/
+//            └─ KawaiiVerseCoop.exe  ← double-cliquez pour jouer
+//
+// Pour distribuer : zippez le dossier KawaiiVerseCoop/ entier.
+// =============================================
+tasks.register('packageWindowsExe') {
+    dependsOn 'jar'
+    group 'distribution'
+    description 'Crée KawaiiVerseCoop.exe avec JRE embarqué (pas besoin de Java sur le PC cible)'
+
+    doLast {
+        // Localiser jpackage dans le JDK courant (IntelliJ/Gradle)
+        def javaHome = org.gradle.internal.jvm.Jvm.current().javaHome.absolutePath
+        def jpackageExe = new File("${javaHome}/bin/jpackage.exe")
+
+        if (!jpackageExe.exists()) {
+            throw new GradleException(
+                "\n❌ jpackage introuvable !\n" +
+                "Chemin vérifié : ${jpackageExe.absolutePath}\n\n" +
+                "Solution : configurez un JDK 14 ou supérieur pour Gradle dans IntelliJ :\n" +
+                "  File → Settings → Build, Execution, Deployment → Build Tools → Gradle\n" +
+                "  → 'Gradle JVM' → choisissez un JDK 17 ou 21"
+            )
+        }
+
+        def jarFile     = tasks.jar.archiveFile.get().asFile
+        def outputDir   = layout.buildDirectory.dir("windows-package").get().asFile
+
+        // Nettoyer l'ancien build si présent
+        if (outputDir.exists()) {
+            outputDir.deleteDir()
+        }
+
+        println "\n🔨 Packaging Windows en cours..."
+        println "   Source JAR  : ${jarFile.name} (${(jarFile.length() / 1_000_000).round(1)} MB)"
+        println "   JDK utilisé : ${javaHome}"
+        println "   Destination : ${outputDir.absolutePath}\n"
+
+        def cmdArgs = [
+            jpackageExe.absolutePath,
+            '--type',        'app-image',
+            '--input',       jarFile.parentFile.absolutePath,
+            '--main-jar',    jarFile.name,
+            '--main-class',  'com.vortexmakers.plateformer.lwjgl3.Lwjgl3Launcher',
+            '--dest',        outputDir.absolutePath,
+            '--name',        'KawaiiVerseCoop',
+            '--app-version', '1.0.0',
+        ]
+
+        // Ajouter l'icône Windows (.ico) si elle existe
+        def iconFile = project.file('icons/logo.ico')
+        if (iconFile.exists()) {
+            cmdArgs += ['--icon', iconFile.absolutePath]
+            println "   Icône       : logo.ico ✓"
+        }
+
+        exec {
+            commandLine cmdArgs
+        }
+
+        def resultDir = new File(outputDir, 'KawaiiVerseCoop')
+        def exeFile   = new File(resultDir, 'KawaiiVerseCoop.exe')
+
+        if (exeFile.exists()) {
+            println "\n✅ Build réussi !"
+            println "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            println "📁 Dossier  : ${resultDir.absolutePath}"
+            println "▶️  Exe      : KawaiiVerseCoop.exe"
+            println "📦 Partager : zippez tout le dossier 'KawaiiVerseCoop'"
+            println "             et envoyez le ZIP à vos coéquipiers."
+            println "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        } else {
+            throw new GradleException("jpackage s'est terminé sans erreur mais l'exe est introuvable.")
+        }
+    }
+}
+
 distributions {
   main {
     contents {
