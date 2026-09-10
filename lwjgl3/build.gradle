@@ -219,7 +219,7 @@ tasks.register('packageWindowsExe') {
         ]
 
         // Ajouter l'icône Windows (.ico) si elle existe
-        def iconFile = project.file('icons/logo.ico')
+        def iconFile = project.file('icons/kawaii_icon.ico')
         if (iconFile.exists()) {
             cmdArgs += ['--icon', iconFile.absolutePath]
             println "   Icône       : logo.ico ✓"
