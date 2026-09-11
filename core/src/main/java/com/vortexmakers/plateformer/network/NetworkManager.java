@@ -66,6 +66,9 @@ public class NetworkManager {
     // MAP : PlayerID → Type de personnage
     private Map<Integer, String> playerCharacters;
 
+    // Statuts Ready des joueurs
+    private Map<Integer, Boolean> playerReadyStates;
+
     // Timer du jeu (géré par le serveur)
     private float serverGameTimer = 0f;
     private float serverTimeLimit = 180f; // 3 minutes
@@ -76,6 +79,14 @@ public class NetworkManager {
     private float finishFlagY = 32f;   // Position Y (sur le sol)
     private Set<Integer> playersWhoFinished = new HashSet<>();
 
+    // CACHE DES ÉTATS POUR TRANSITION LOBBY → GAMESCREEN
+    // Les messages arrivent pendant le lobby (listener = LobbyScreen qui les ignore).
+    // On les met en cache ici pour que GameScreen puisse les récupérer à sa création.
+    private PlatformStateMessage cachedPlatformState;
+    private SpikeStateMessage cachedSpikeState;
+    private CollectibleStateMessage cachedCollectibleState;
+    private FinishFlagStateMessage cachedFinishFlagState;
+
     // CONSTRUCTEUR PRIVÉ
     private NetworkManager() {
         this.connectedPlayers = new HashMap<>();
@@ -85,6 +96,7 @@ public class NetworkManager {
         this.serverPlatforms = new ArrayList<>();
         this.lastReceivedSequence = new HashMap<>();
         this.serverSpikes = new ArrayList<>();
+        this.playerReadyStates = new HashMap<>();
         System.out.println("NetworkManager créé (Singleton)");
     }
 
@@ -110,6 +122,125 @@ public class NetworkManager {
     public void setLocalCharacter(String characterType) {
         this.localPlayerCharacter = characterType;
         System.out.println("[CLIENT] Personnage local défini : " + characterType);
+    }
+
+    /**
+     * ENVOYER NOTRE STATUT PRÊT AU SERVEUR
+     */
+    public void sendReadyState(boolean isReady) {
+        if (client != null && client.isConnected()) {
+            PlayerReadyMessage msg = new PlayerReadyMessage(localPlayerId, isReady);
+            client.sendTCP(msg);
+            System.out.println("[CLIENT] Statut prêt envoyé : " + isReady);
+        }
+    }
+
+    /**
+     * VÉRIFIER SI TOUS LES JOUEURS SONT PRÊTS (côté serveur)
+     */
+    private boolean areAllPlayersReady() {
+        if (playerReadyStates.isEmpty()) return false;
+        if (playerReadyStates.size() < connectedPlayers.size()) return false;
+        for (boolean ready : playerReadyStates.values()) {
+            if (!ready) return false;
+        }
+        return true;
+    }
+
+    /**
+     * GÉRER LE MESSAGE READY (côté serveur)
+     */
+    private void handlePlayerReady(PlayerReadyMessage message) {
+        playerReadyStates.put(message.playerId, message.isReady);
+        System.out.println("[SERVEUR] Joueur " + message.playerId + " ready: " + message.isReady);
+
+        // Mettre à jour le lobby avec les nouveaux statuts
+        sendLobbyStateToAll();
+
+        // Si tous prêts → envoyer signal de lancement
+        if (areAllPlayersReady()) {
+            System.out.println("[SERVEUR] Tous les joueurs sont prêts ! Lancement de la partie...");
+            sendGameStartToAll();
+        }
+    }
+
+    /**
+     * RÉINITIALISER L'ÉTAT DU JEU CÔTÉ SERVEUR POUR UNE NOUVELLE PARTIE
+     * Appelé avant chaque lancement pour éviter que l'état de la partie précédente persiste.
+     */
+    private void resetServerGameState() {
+        System.out.println("[SERVEUR] Réinitialisation de l'état du jeu pour une nouvelle partie...");
+
+        // Remettre le timer à zéro (sinon game over immédiat si partie rejouée)
+        serverGameTimer = 0f;
+        serverTimerStarted = false;
+
+        // Réinitialiser le drapeau de fin
+        playersWhoFinished.clear();
+
+        // Réinitialiser le statut "prêt" (les joueurs devront re-cliquer Prêt)
+        playerReadyStates.clear();
+
+        // Réinitialiser tous les collectibles (pièces)
+        for (CollectibleStateMessage.CollectibleData c : serverCollectibles) {
+            c.collected = false;
+            c.collectedByPlayerId = -1;
+        }
+
+        // Téléporter tous les joueurs au point de départ
+        for (ServerPlayer player : serverPlayers.values()) {
+            player.x = 50f;
+            player.y = 300f;
+            player.velocityX = 0f;
+            player.velocityY = 0f;
+            player.isGrounded = false;
+            player.updateBounds();
+        }
+
+        // Invalider le cache des collectibles et du drapeau (seront mis à jour par l'envoi ci-dessous)
+        cachedCollectibleState = null;
+        cachedFinishFlagState = null;
+
+        System.out.println("[SERVEUR] État réinitialisé : timer=0, " + serverCollectibles.size() + " collectibles reset.");
+    }
+
+    /**
+     * ENVOYER LE SIGNAL DE LANCEMENT À TOUS
+     */
+    private void sendGameStartToAll() {
+        if (server == null) return;
+
+        // 0. RÉINITIALISER L'ÉTAT DU JEU (critique pour les parties rejouées)
+        resetServerGameState();
+
+        // Démarrer le timer maintenant
+        serverTimerStarted = true;
+        System.out.println("[SERVEUR] Nouvelle partie lancée ! Timer démarré.");
+
+        // 1. Envoyer le GameStartMessage dédié à tous les clients
+        GameStartMessage startMsg = new GameStartMessage();
+        server.sendToAllTCP(startMsg);
+        System.out.println("[SERVEUR] GameStartMessage envoyé à tous !");
+
+        // 2. Re-envoyer l'état initial complet (plateformes, spikes, collectibles, drapeau)
+        // Car ces données ont été reçues pendant le lobby (listener = LobbyScreen qui les ignore).
+        // En les renvoyant ici, le GameScreen (nouveau listener) pourra les traiter.
+        sendPlatformStateToAll();
+        sendSpikeStateToAll();
+
+        // Collectibles via TCP pour fiabilité au lancement (reset inclus grâce à resetServerGameState)
+        try {
+            CollectibleStateMessage cs = new CollectibleStateMessage();
+            cs.collectibles.addAll(serverCollectibles);
+            if (server.getConnections().length > 0) {
+                server.sendToAllTCP(cs);
+            }
+        } catch (Exception e) {
+            System.err.println("Erreur renvoi collectibles au lancement: " + e.getMessage());
+        }
+        sendFinishFlagStateToAll();
+
+        System.out.println("[SERVEUR] État initial renvoyé à tous les clients pour le lancement !");
     }
 
     /**
@@ -527,19 +658,14 @@ public class NetworkManager {
             // Toujours mettre à jour et envoyer, même sans joueurs
             if (!serverPlayers.isEmpty()) {
                 // Démarrer le timer dès qu'il y a des joueurs
-                if (!serverTimerStarted) {
-                    serverTimerStarted = true;
-                    System.out.println("[SERVEUR] Timer démarré !");
-                }
-
                 // Incrémenter le timer du serveur
+                // (serverTimerStarted est mis à true uniquement dans sendGameStartToAll())
                 if (serverTimerStarted) {
                     serverGameTimer += Constants.SERVER_UPDATE_INTERVAL;
 
                     // Vérifier si le temps est écoulé
                     if (serverGameTimer >= serverTimeLimit) {
                         System.out.println("[SERVEUR] Temps écoulé ! Game Over");
-                        // TODO : Envoyer message Game Over (Phase 4)
                     }
                 }
                 // APPLIQUER LA PHYSIQUE À TOUS LES JOUEURS
@@ -1053,6 +1179,12 @@ public class NetworkManager {
 
         // Respawn
         kryo.register(PlayerRespawnMessage.class);
+
+        // PlayerReady
+        kryo.register(PlayerReadyMessage.class);
+
+        // GameStart
+        kryo.register(GameStartMessage.class);
     }
 
     /**
@@ -1062,21 +1194,27 @@ public class NetworkManager {
         if (server == null || !isHost) return;
 
         LobbyStateMessage lobbyState = new LobbyStateMessage();
+        lobbyState.allPlayersReady = areAllPlayersReady();
 
-        // Construire la liste des joueurs
-        for (Map.Entry<Integer, String> entry : playerCharacters.entrySet()) {
-            int playerId = entry.getKey();
-            String characterType = entry.getValue();
-            String playerName = "Player " + playerId;
-            boolean isHostPlayer = (playerId == 1); // Le premier joueur est le host
+        // Host en premier, puis les autres
+        List<Integer> orderedIds = new ArrayList<>();
+        for (Integer id : playerCharacters.keySet()) {
+            if (id == 1) orderedIds.add(0, id); // Host (ID=1) en premier
+            else orderedIds.add(id);
+        }
+
+        for (Integer playerId : orderedIds) {
+            String characterType = playerCharacters.get(playerId);
+            boolean isHostPlayer = (playerId == 1);
+            boolean isReady = playerReadyStates.getOrDefault(playerId, false);
 
             LobbyStateMessage.LobbyPlayerData playerData = new LobbyStateMessage.LobbyPlayerData(
                 playerId,
-                playerName,
+                "Player " + playerId,
                 characterType,
-                isHostPlayer
+                isHostPlayer,
+                isReady
             );
-
             lobbyState.players.put(playerId, playerData);
         }
 
@@ -1128,6 +1266,8 @@ public class NetworkManager {
             handlePlayerInput((PlayerInputMessage) object);
         } else if (object instanceof PlayerCharacterMessage) {
             handlePlayerCharacter((PlayerCharacterMessage) object);
+        }else if (object instanceof PlayerReadyMessage) {
+            handlePlayerReady((PlayerReadyMessage) object);
         }
     }
 
@@ -1151,14 +1291,16 @@ public class NetworkManager {
         // Utiliser le personnage du message
         String characterType = message.characterType != null ? message.characterType : "beige";
         playerCharacters.put(newPlayerId, characterType);
+        // Initialiser le statut ready à false
+        playerReadyStates.put(newPlayerId, false);
 
         System.out.println("[SERVEUR] Joueur " + newPlayerId + " rejoint avec personnage : " + characterType);
 
-        // ✅ ÉTAPE 1 : Confirmation au joueur (TCP) - PRIORITAIRE
+        // ÉTAPE 1 : Confirmation au joueur (TCP) - PRIORITAIRE
         connection.sendTCP(message);
-        System.out.println("[SERVEUR] ✅ Confirmation envoyée à joueur " + newPlayerId);
+        System.out.println("[SERVEUR] Confirmation envoyée à joueur " + newPlayerId);
 
-        // ✅ NOUVEAU : Petit délai pour que la confirmation arrive AVANT les joueurs existants
+        // Petit délai pour que la confirmation arrive AVANT les joueurs existants
         try {
             Thread.sleep(50); // 50ms de délai
         } catch (InterruptedException e) {
@@ -1181,7 +1323,7 @@ public class NetworkManager {
                 );
                 connection.sendTCP(existingPlayerMsg);
 
-                // ✅ NOUVEAU : Petit délai entre chaque message
+                // Petit délai entre chaque message
                 try {
                     Thread.sleep(20); // 20ms entre chaque joueur
                 } catch (InterruptedException e) {
@@ -1295,6 +1437,7 @@ public class NetworkManager {
         connectedPlayers.remove(playerId);
         serverPlayers.remove(playerId); // Nettoyer le joueur serveur
         lastReceivedSequence.remove(playerId); // Nettoyer la séquence
+        playerReadyStates.remove(playerId); // Nettoyer le ready state
 
         // Informer tous les clients
         PlayerLeaveMessage leaveMessage = new PlayerLeaveMessage(playerId);
@@ -1343,33 +1486,40 @@ public class NetworkManager {
             if (networkListener != null) {
                 networkListener.onPlayerLeft((PlayerLeaveMessage) object);
             }
+        } else if (object instanceof GameStartMessage) {
+            // Signal de lancement dédié (remplace l'ancienne convention currentTime=-1f)
+            System.out.println("[CLIENT] GameStartMessage reçu → lancement de la partie !");
+            if (networkListener != null) networkListener.onGameStartReceived();
+
         } else if (object instanceof PlatformStateMessage) {
-            // Gérer les plateformes
+            // Mettre en cache ET notifier le listener actuel
+            cachedPlatformState = (PlatformStateMessage) object;
             if (networkListener != null) {
-                networkListener.onPlatformStateReceived((PlatformStateMessage) object);
-            }
-        }else if (object instanceof CollectibleStateMessage) {
-            // Gérer les collectible
-            if (networkListener != null) {
-                networkListener.onCollectibleStateReceived((CollectibleStateMessage) object);
-            }
-        } else if (object instanceof GameTimerMessage) {
-            // Gérer le timer
-            if (networkListener != null) {
-                networkListener.onGameTimerReceived((GameTimerMessage) object);
-            }
-        } else if (object instanceof FinishFlagStateMessage) {
-            // Gérer l'état du drapeau
-            if (networkListener != null) {
-                networkListener.onFinishFlagStateReceived((FinishFlagStateMessage) object);
+                networkListener.onPlatformStateReceived(cachedPlatformState);
             }
         } else if (object instanceof SpikeStateMessage) {
-            // Gérer les spikes
+            // Mettre en cache ET notifier le listener actuel
+            cachedSpikeState = (SpikeStateMessage) object;
             if (networkListener != null) {
-                networkListener.onSpikeStateReceived((SpikeStateMessage) object);
+                networkListener.onSpikeStateReceived(cachedSpikeState);
             }
+        } else if (object instanceof CollectibleStateMessage) {
+            // Mettre en cache ET notifier le listener actuel
+            cachedCollectibleState = (CollectibleStateMessage) object;
+            if (networkListener != null) {
+                networkListener.onCollectibleStateReceived(cachedCollectibleState);
+            }
+        } else if (object instanceof FinishFlagStateMessage) {
+            // Mettre en cache ET notifier le listener actuel
+            cachedFinishFlagState = (FinishFlagStateMessage) object;
+            if (networkListener != null) {
+                networkListener.onFinishFlagStateReceived(cachedFinishFlagState);
+            }
+        } else if (object instanceof GameTimerMessage) {
+            // Timer normal (plus de convention currentTime=-1f)
+            if (networkListener != null) networkListener.onGameTimerReceived((GameTimerMessage) object);
+
         } else if (object instanceof PlayerRespawnMessage) {
-            // Gérer le respawn
             if (networkListener != null) {
                 networkListener.onPlayerRespawned((PlayerRespawnMessage) object);
             }
@@ -1378,8 +1528,10 @@ public class NetworkManager {
                 networkListener.onPlayerCharacterChanged((PlayerCharacterMessage) object);
             }
         } else if (object instanceof LobbyStateMessage) {
+            // Routage : lobby state = mise à jour liste + statut ready
             if (networkListener != null) {
                 networkListener.onLobbyStateReceived((LobbyStateMessage) object);
+                networkListener.onPlayerReadyStateReceived((LobbyStateMessage) object);
             }
         }
     }
@@ -1412,6 +1564,15 @@ public class NetworkManager {
     public String getPlayerCharacter(int playerId) {
         return playerCharacters.getOrDefault(playerId, "beige");
     }
+
+    /**
+     * GETTERS POUR LE CACHE D'ÉTAT
+     * Permettent à GameScreen de récupérer les données reçues pendant le lobby.
+     */
+    public PlatformStateMessage getCachedPlatformState() { return cachedPlatformState; }
+    public SpikeStateMessage getCachedSpikeState() { return cachedSpikeState; }
+    public CollectibleStateMessage getCachedCollectibleState() { return cachedCollectibleState; }
+    public FinishFlagStateMessage getCachedFinishFlagState() { return cachedFinishFlagState; }
 
     /**
      * FERMER LES CONNEXIONS

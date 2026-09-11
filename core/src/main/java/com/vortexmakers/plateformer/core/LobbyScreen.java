@@ -44,13 +44,25 @@ public class LobbyScreen implements Screen, NetworkListener {
     private String selectedCharacter = "beige";
     private Map<String, TextButton> characterButtons;
 
-    // ✅ NOUVEAU : LISTE DES JOUEURS
-    private Table playerListTable;
+
+
+    // INTERFACE - Section lobby (visible après connexion)
+    private Table lobbySection;         // Section lobby complète (cachée au début)
+    private Table connectionSection;    // Section connexion (cachée après connexion)
+    private Table playerListTable;      // Liste des joueurs
+    private TextButton readyButton;     // Bouton Prêt / Pas Prêt
+    private Label allReadyLabel;        // Message "En attente de joueurs..."
+
+    // DONNÉES
     private Map<Integer, LobbyStateMessage.LobbyPlayerData> lobbyPlayers;
+    private boolean isLocalReady = false;
+    private boolean allPlayersReady = false;
+    private boolean isConnectedToServer = false;
 
     // Flag connexion
     private boolean connectionCheckStarted = false;
     private boolean gameScreenCreated = false;
+    private boolean gameStartSignalReceived = false; // signal de lancement
 
     public LobbyScreen(PlateformerGame game) {
         this.game = game;
@@ -80,71 +92,56 @@ public class LobbyScreen implements Screen, NetworkListener {
      * CRÉATION DE L'INTERFACE - Avec liste des joueurs
      */
     private void createUI() {
-        Table mainTable = new Table();
-        mainTable.setFillParent(true);
-        stage.addActor(mainTable);
-
-        mainTable.padTop(20);
-
-        // ==========================================
-        // SECTION 1 : LISTE DES JOUEURS
-        // ==========================================
-        Label playersLabel = new Label("Joueurs connectes:", skin);
-        playersLabel.setFontScale(1.5f);
-        mainTable.add(playersLabel).colspan(5).padBottom(10);
-        mainTable.row();
-
-        // ✅ NOUVEAU : Table pour la liste des joueurs
-        playerListTable = new Table();
-        playerListTable.setBackground(skin.newDrawable("white", new Color(0.2f, 0.2f, 0.3f, 1)));
-
-        // Placeholder initial
-        Label emptyLabel = new Label("En attente de joueurs...", skin);
-        emptyLabel.setFontScale(0.8f);
-        playerListTable.add(emptyLabel).pad(10);
-
-        mainTable.add(playerListTable).colspan(5).width(600).height(100).padBottom(20);
-        mainTable.row();
+        Table root = new Table();
+        root.setFillParent(true);
+        root.padTop(15).padBottom(15);
+        stage.addActor(root);
 
         // ==========================================
-        // SECTION 2 : CHOIX DU PERSONNAGE
+        // TITRE
+        // ==========================================
+        Label titleLabel = new Label("Kawaii Verse Coop", skin);
+        titleLabel.setFontScale(2.0f);
+        titleLabel.setColor(Color.CYAN);
+        root.add(titleLabel).colspan(5).padBottom(15);
+        root.row();
+
+        // ==========================================
+        // SECTION CHOIX DE PERSONNAGE (toujours visible)
         // ==========================================
         Label charLabel = new Label("Choix du personnage:", skin);
-        charLabel.setFontScale(1.5f);
-        mainTable.add(charLabel).colspan(5).padBottom(15);
-        mainTable.row();
+        charLabel.setFontScale(1.3f);
+        root.add(charLabel).colspan(5).padBottom(8);
+        root.row();
 
-        // Boutons de personnage
         String[] characters = {"beige", "green", "pink", "purple", "yellow"};
-        String[] labels = {"Beige", "Vert", "Rose", "Violet", "Jaune"};
+        String[] charLabels  = {"Beige", "Vert",  "Rose", "Violet", "Jaune"};
 
         for (int i = 0; i < characters.length; i++) {
-            String character = characters[i];
-            TextButton button = new TextButton(labels[i], skin);
+            final String character = characters[i];
+            TextButton btn = new TextButton(charLabels[i], skin);
+            if (character.equals("beige")) btn.setColor(1, 1, 0.5f, 1);
 
-            if (character.equals("beige")) {
-                button.setColor(1, 1, 0.5f, 1);
-            }
-
-            button.addListener(new ClickListener() {
+            btn.addListener(new ClickListener() {
                 @Override
                 public void clicked(InputEvent event, float x, float y) {
                     selectCharacter(character);
                 }
             });
 
-            characterButtons.put(character, button);
-            mainTable.add(button).width(100).height(60).pad(5);
+            characterButtons.put(character, btn);
+            root.add(btn).width(100).height(50).pad(4);
         }
-        mainTable.row();
+        root.row();
 
-        // ESPACE
-        mainTable.add().height(20).colspan(5);
-        mainTable.row();
+        // Séparateur
+        root.add().height(10).colspan(5);
+        root.row();
 
         // ==========================================
-        // SECTION 3 : BOUTONS CONNEXION
+        // SECTION CONNEXION (visible avant connexion)
         // ==========================================
+        connectionSection = new Table();
 
         hostButton = new TextButton("Heberger une partie", skin);
         hostButton.addListener(new ClickListener() {
@@ -153,18 +150,17 @@ public class LobbyScreen implements Screen, NetworkListener {
                 hostGame();
             }
         });
-        mainTable.add(hostButton).width(250).height(60).padBottom(20).colspan(5);
-        mainTable.row();
+        connectionSection.add(hostButton).width(250).height(55).padBottom(10);
+        connectionSection.row();
 
         Label orLabel = new Label("--- OU ---", skin);
-        orLabel.setFontScale(1.2f);
-        mainTable.add(orLabel).colspan(5).padBottom(15);
-        mainTable.row();
+        connectionSection.add(orLabel).padBottom(8);
+        connectionSection.row();
 
         ipField = new TextField("localhost", skin);
         ipField.setMessageText("Adresse IP du serveur");
-        mainTable.add(ipField).width(250).height(50).padBottom(20).colspan(5);
-        mainTable.row();
+        connectionSection.add(ipField).width(250).height(45).padBottom(8);
+        connectionSection.row();
 
         joinButton = new TextButton("Rejoindre une partie", skin);
         joinButton.addListener(new ClickListener() {
@@ -173,11 +169,74 @@ public class LobbyScreen implements Screen, NetworkListener {
                 joinGame();
             }
         });
-        mainTable.add(joinButton).width(250).height(60).colspan(5);
+        connectionSection.add(joinButton).width(250).height(55);
+
+        root.add(connectionSection).colspan(5).padBottom(10);
+        root.row();
+
+        // ==========================================
+        // SECTION LOBBY (visible après connexion)
+        // ==========================================
+        lobbySection = new Table();
+        lobbySection.setVisible(false); // Cachée au départ
+
+        // Liste des joueurs
+        Label playersTitle = new Label("Joueurs dans le lobby:", skin);
+        playersTitle.setFontScale(1.3f);
+        lobbySection.add(playersTitle).padBottom(8);
+        lobbySection.row();
+
+        playerListTable = new Table();
+        playerListTable.setBackground(skin.newDrawable("white", new Color(0.15f, 0.15f, 0.25f, 1)));
+        updatePlayerList(); // Initialiser vide
+
+        // Table directement, pas de ScrollPane
+        lobbySection.add(playerListTable).width(550).padBottom(12);
+        lobbySection.row();
+
+        // Message statut "tous prêts"
+        allReadyLabel = new Label("En attente que tous les joueurs soient prets...", skin);
+        allReadyLabel.setColor(Color.ORANGE);
+        lobbySection.add(allReadyLabel).padBottom(10);
+        lobbySection.row();
+
+        // Bouton Ready
+        readyButton = new TextButton("  Je suis PRET !  ", skin);
+        readyButton.setColor(new Color(0.2f, 0.7f, 0.2f, 1)); // Vert
+        readyButton.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                toggleReady();
+            }
+        });
+        lobbySection.add(readyButton).width(220).height(60);
+
+        root.add(lobbySection).colspan(5);
+        root.row();
     }
 
     /**
-     * ✅ NOUVEAU : METTRE À JOUR LA LISTE DES JOUEURS
+     * BASCULER LE STATUT PRÊT
+     */
+    private void toggleReady() {
+        isLocalReady = !isLocalReady;
+
+        // Mettre à jour l'apparence du bouton
+        if (isLocalReady) {
+            readyButton.setText("  Pas encore pret...  ");
+            readyButton.setColor(new Color(0.7f, 0.2f, 0.2f, 1)); // Rouge = "cliquer pour annuler"
+        } else {
+            readyButton.setText("  Je suis PRET !  ");
+            readyButton.setColor(new Color(0.2f, 0.7f, 0.2f, 1)); // Vert
+        }
+
+        // Envoyer au serveur
+        networkManager.sendReadyState(isLocalReady);
+        System.out.println("[LOBBY] Statut prêt: " + isLocalReady);
+    }
+
+    /**
+     * METTRE À JOUR LA LISTE DES JOUEURS
      */
     private void updatePlayerList() {
         playerListTable.clear();
@@ -314,35 +373,82 @@ public class LobbyScreen implements Screen, NetworkListener {
         Gdx.gl.glClearColor(0.1f, 0.1f, 0.2f, 1);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
-        // Vérifier connexion
-        if (connectionCheckStarted && networkManager.isConnected() && !gameScreenCreated) {
+        // Lancer le jeu quand signal reçu
+        if (gameStartSignalReceived && !gameScreenCreated) {
             gameScreenCreated = true;
-
-            System.out.println("✅ [LOBBY] Connexion détectée, création GameScreen unique");
-            statusMessage = "Connecte! Chargement du jeu...";
+            System.out.println("[LOBBY] Signal reçu → Lancement GameScreen !");
             game.setScreen(new GameScreen(game, networkManager, selectedCharacter));
             return;
+        }
+
+        // Afficher la section lobby après connexion
+        if (connectionCheckStarted && networkManager.isConnected() && !isConnectedToServer) {
+            isConnectedToServer = true;
+            showLobbySection();
         }
 
         stage.act(delta);
         stage.draw();
 
-        // Statut
+        // Message de statut en bas
         batch.begin();
-        font.draw(batch, statusMessage, 50, 50);
+        font.draw(batch, statusMessage, 50, 30);
         batch.end();
     }
 
-    // ✅ NOUVEAU : RÉCEPTION DE L'ÉTAT DU LOBBY
+    /**
+     * AFFICHER LA SECTION LOBBY (après connexion)
+     */
+    private void showLobbySection() {
+        connectionSection.setVisible(false);
+        lobbySection.setVisible(true);
+        statusMessage = "Connecte ! Choisis ton personnage et clique sur Pret.";
+        System.out.println("[LOBBY] Section lobby affichée");
+    }
+
+    // RÉCEPTION DE L'ÉTAT DU LOBBY
     @Override
     public void onLobbyStateReceived(LobbyStateMessage message) {
         Gdx.app.postRunnable(() -> {
-            System.out.println("📋 [LOBBY] État reçu : " + message.players.size() + " joueurs");
-
             lobbyPlayers.clear();
-            lobbyPlayers.putAll(message.players);
+            // Mettre le host en premier
+            LobbyStateMessage.LobbyPlayerData hostData = null;
+            for (LobbyStateMessage.LobbyPlayerData player : message.players.values()) {
+                if (player.isHost) hostData = player;
+            }
+            if (hostData != null) lobbyPlayers.put(hostData.playerId, hostData);
+            for (LobbyStateMessage.LobbyPlayerData player : message.players.values()) {
+                if (!player.isHost) lobbyPlayers.put(player.playerId, player);
+            }
 
+            allPlayersReady = message.allPlayersReady;
             updatePlayerList();
+
+            // Mettre à jour le message de statut "tous prêts"
+            if (allReadyLabel != null) {
+                if (allPlayersReady) {
+                    allReadyLabel.setText("Tous les joueurs sont prets ! Lancement imminent...");
+                    allReadyLabel.setColor(Color.GREEN);
+                } else {
+                    allReadyLabel.setText("En attente que tous les joueurs soient prets...");
+                    allReadyLabel.setColor(Color.ORANGE);
+                }
+            }
+        });
+    }
+
+    // Réception du statut ready (routé depuis onLobbyStateReceived)
+    @Override
+    public void onPlayerReadyStateReceived(LobbyStateMessage message) {
+        // Déjà géré dans onLobbyStateReceived, rien de plus à faire ici
+    }
+
+    // Signal de lancement de partie
+    @Override
+    public void onGameStartReceived() {
+        Gdx.app.postRunnable(() -> {
+            System.out.println("[LOBBY] onGameStartReceived → Transition vers GameScreen");
+            gameStartSignalReceived = true;
         });
     }
 

@@ -12,12 +12,12 @@ import com.vortexmakers.plateformer.network.NetworkManager;
 import com.vortexmakers.plateformer.utils.AssetManager;
 
 public class PlateformerGame extends Game {
-    // ✅ RÉFÉRENCE AU SINGLETON
+    // RÉFÉRENCE AU SINGLETON
     private NetworkManager networkManager;
 
     @Override
     public void create() {
-        // ✅ INITIALISATION DU SINGLETON
+        // INITIALISATION DU SINGLETON
         networkManager = NetworkManager.getInstance();
         setScreen(new LobbyScreen(this));
     }
@@ -26,7 +26,7 @@ public class PlateformerGame extends Game {
     public void render() {
         super.render();
 
-        // ✅ TOUJOURS DISPONIBLE
+        // TOUJOURS DISPONIBLE
         if (networkManager != null) {
             networkManager.updateServer(Gdx.graphics.getDeltaTime());
         }
@@ -41,11 +41,11 @@ public class PlateformerGame extends Game {
             screen.dispose();
         }
 
-        // ✅ NOUVEAU : Disposer l'AssetManager globalement
+        // NOUVEAU : Disposer l'AssetManager globalement
         AssetManager assetManager = AssetManager.getInstance();
         if (assetManager != null && assetManager.areAssetsLoaded()) {
             assetManager.dispose();
-            System.out.println("✅ AssetManager disposé");
+            System.out.println("AssetManager disposé");
         }
 
         // Nettoyage réseau
@@ -54,6 +54,6 @@ public class PlateformerGame extends Game {
             NetworkManager.resetInstance();
         }
 
-        System.out.println("✅ Jeu complètement nettoyé");
+        System.out.println("Jeu complètement nettoyé");
     }
 }
