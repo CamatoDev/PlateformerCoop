@@ -222,7 +222,34 @@ public class NetworkManager {
         server.sendToAllTCP(startMsg);
         System.out.println("[SERVEUR] GameStartMessage envoyé à tous !");
 
-        // 2. Re-envoyer l'état initial complet (plateformes, spikes, collectibles, drapeau)
+        // 2. Re-envoyer les PlayerJoinMessage de tous les joueurs à chaque connexion
+        // CORRECTION DU BUG "joueurs invisibles" :
+        // Les PlayerJoinMessage arrivent pendant le lobby (listener = LobbyScreen).
+        // GameScreen n'a donc jamais créé les entités des autres joueurs → remotePlayers vide.
+        // On les renvoie ici pour que GameScreen (nouveau listener) puisse les traiter.
+        System.out.println("[SERVEUR] Re-envoi des PlayerJoinMessage pour synchronisation des joueurs...");
+        for (Connection conn : server.getConnections()) {
+            int receiverId = conn.getID();
+            for (Map.Entry<Integer, GameStateMessage.PlayerData> entry : connectedPlayers.entrySet()) {
+                int playerId = entry.getKey();
+                if (playerId == receiverId) continue; // Ne pas envoyer à soi-même
+
+                String character = playerCharacters.getOrDefault(playerId, "beige");
+                GameStateMessage.PlayerData data = entry.getValue();
+
+                PlayerJoinMessage joinMsg = new PlayerJoinMessage(
+                    playerId,
+                    data.playerName,
+                    50f,  // Position de départ X (respawn au départ)
+                    300f, // Position de départ Y
+                    character
+                );
+                conn.sendTCP(joinMsg);
+                System.out.println("[SERVEUR] → PlayerJoinMessage joueur " + playerId + " (" + character + ") envoyé à " + receiverId);
+            }
+        }
+
+        // 3. Re-envoyer l'état initial complet (plateformes, spikes, collectibles, drapeau)
         // Car ces données ont été reçues pendant le lobby (listener = LobbyScreen qui les ignore).
         // En les renvoyant ici, le GameScreen (nouveau listener) pourra les traiter.
         sendPlatformStateToAll();
