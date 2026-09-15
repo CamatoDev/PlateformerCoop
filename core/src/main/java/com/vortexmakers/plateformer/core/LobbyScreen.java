@@ -100,7 +100,7 @@ public class LobbyScreen implements Screen, NetworkListener {
         // ==========================================
         // TITRE
         // ==========================================
-        Label titleLabel = new Label("Kawaii Verse Coop", skin);
+        Label titleLabel = new Label("Kawaii Verse", skin);
         titleLabel.setFontScale(2.0f);
         titleLabel.setColor(Color.CYAN);
         root.add(titleLabel).colspan(5).padBottom(15);

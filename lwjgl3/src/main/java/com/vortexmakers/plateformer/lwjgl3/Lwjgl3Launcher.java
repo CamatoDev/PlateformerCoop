@@ -10,7 +10,7 @@ public class Lwjgl3Launcher {
     public static void main(String[] arg) {
         Lwjgl3ApplicationConfiguration config = new Lwjgl3ApplicationConfiguration();
         config.setForegroundFPS(60);
-        config.setTitle("Plateformer Coop");
+        config.setTitle("Kawaii Verse");
         config.useVsync(true);
         config.setWindowedMode(1080, 720);
         config.setWindowIcon("Characters/Double/character_beige_front.png");
