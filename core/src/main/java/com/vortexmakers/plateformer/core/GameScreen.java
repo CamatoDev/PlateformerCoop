@@ -210,6 +210,23 @@ public class GameScreen implements Screen, NetworkListener {
             System.out.println("[GameScreen] Drapeau trouvé dans le cache");
             onFinishFlagStateReceived(cachedFlag);
         }
+
+        // CORRECTION BUG "joueur distant invisible" :
+        // Les PlayerJoinMessage des autres joueurs arrivent pendant le lobby (LobbyScreen = listener).
+        // Ils sont maintenant mis en cache dans NetworkManager.
+        // On les lit ici pour créer les entités des joueurs distants dès que GameScreen démarre.
+        Map<Integer, PlayerJoinMessage> cachedJoins = networkManager.getCachedRemotePlayerJoins();
+        if (!cachedJoins.isEmpty()) {
+            System.out.println("[GameScreen] " + cachedJoins.size() + " joueur(s) distant(s) trouvé(s) dans le cache → création...");
+            for (PlayerJoinMessage joinMsg : cachedJoins.values()) {
+                if (joinMsg.playerId == localPlayerId) continue; // Sécurité : ignorer notre propre ID
+                if (remotePlayers.containsKey(joinMsg.playerId)) continue; // Déjà créé
+                System.out.println("[GameScreen] Création joueur distant depuis cache : ID=" + joinMsg.playerId + " perso=" + joinMsg.characterType);
+                createRemotePlayer(joinMsg);
+            }
+        } else {
+            System.out.println("[GameScreen] Aucun joueur distant en cache (PlayerJoinMessage non encore reçu)");
+        }
     }
 
     @Override

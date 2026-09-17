@@ -15,6 +15,7 @@ import com.vortexmakers.plateformer.utils.Constants;
 // IMPORTATIONS JAVA =====================================
 import java.io.IOException;
 import java.util.*;
+import java.util.Collections;
 
 /**
  * NETWORKMANAGER - Gestionnaire réseau principal
@@ -86,6 +87,10 @@ public class NetworkManager {
     private SpikeStateMessage cachedSpikeState;
     private CollectibleStateMessage cachedCollectibleState;
     private FinishFlagStateMessage cachedFinishFlagState;
+    // Cache des joueurs distants : PlayerID → PlayerJoinMessage
+    // Mis à jour à chaque PlayerJoinMessage reçu pour un joueur autre que nous.
+    // GameScreen le lit dans initFromNetworkCache() pour créer les entités distantes.
+    private Map<Integer, PlayerJoinMessage> cachedRemotePlayerJoins = new HashMap<>();
 
     // CONSTRUCTEUR PRIVÉ
     private NetworkManager() {
@@ -200,6 +205,8 @@ public class NetworkManager {
         // Invalider le cache des collectibles et du drapeau (seront mis à jour par l'envoi ci-dessous)
         cachedCollectibleState = null;
         cachedFinishFlagState = null;
+        // Vider le cache des joueurs distants (sera re-rempli par sendGameStartToAll)
+        cachedRemotePlayerJoins.clear();
 
         System.out.println("[SERVEUR] État réinitialisé : timer=0, " + serverCollectibles.size() + " collectibles reset.");
     }
@@ -1499,8 +1506,16 @@ public class NetworkManager {
                 return; // Ne pas créer de joueur pour nous-même
             }
 
-            // Sinon, c'est un autre joueur qui rejoint
-            System.out.println("[CLIENT] Autre joueur rejoint - ID: " + message.playerId);
+            // Si c'est notre propre ID (re-envoi au game start), ignorer
+            if (message.playerId == localPlayerId) {
+                System.out.println("[CLIENT] PlayerJoinMessage ignoré (c'est notre propre ID)");
+                return;
+            }
+
+            // C'est un autre joueur → CACHER pour que GameScreen puisse le lire
+            System.out.println("[CLIENT] Autre joueur rejoint - ID: " + message.playerId + " → mis en cache");
+            cachedRemotePlayerJoins.put(message.playerId, message);
+
             if (networkListener != null) {
                 networkListener.onPlayerJoined(message);
             }
@@ -1600,6 +1615,10 @@ public class NetworkManager {
     public SpikeStateMessage getCachedSpikeState() { return cachedSpikeState; }
     public CollectibleStateMessage getCachedCollectibleState() { return cachedCollectibleState; }
     public FinishFlagStateMessage getCachedFinishFlagState() { return cachedFinishFlagState; }
+    /** Retourne les PlayerJoinMessage des joueurs distants reçus (hors notre propre ID). */
+    public Map<Integer, PlayerJoinMessage> getCachedRemotePlayerJoins() {
+        return Collections.unmodifiableMap(cachedRemotePlayerJoins);
+    }
 
     /**
      * FERMER LES CONNEXIONS
