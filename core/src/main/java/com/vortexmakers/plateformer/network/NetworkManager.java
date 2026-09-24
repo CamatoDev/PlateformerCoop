@@ -881,11 +881,27 @@ public class NetworkManager {
 
     /**
      * VÉRIFIER SI UN JOUEUR TOUCHE UN SPIKE
+     *
+     * Hitbox réduite aux pointes uniquement (partie haute du sprite).
+     * Le sprite spikes.png est 32x32 mais les pointes sont dans la moitié haute.
+     * On exclut la base vide pour éviter les dégâts avant contact visuel.
      */
     private void checkServerSpikeCollisions(ServerPlayer serverPlayer) {
         for (SpikeStateMessage.SpikeData spike : serverSpikes) {
-            // Rectangle du spike (32x32)
-            Rectangle spikeBounds = new Rectangle(spike.x, spike.y, 32f, 32f);
+            // Hitbox réduite aux pointes : 20px de large (centrée), 14px de haut (haut du sprite)
+            // X : centré dans le sprite 32px (+6 de chaque côté)
+            // Y : limité à la pointe haute (on ignore la base)
+            final float SPIKE_HITBOX_WIDTH  = 20f;
+            final float SPIKE_HITBOX_HEIGHT = 14f;
+            final float SPIKE_HITBOX_OFFSET_X = (32f - SPIKE_HITBOX_WIDTH) / 2f;  // 6px
+            final float SPIKE_HITBOX_OFFSET_Y = 32f - SPIKE_HITBOX_HEIGHT;        // 18px (haut du sprite)
+
+            Rectangle spikeBounds = new Rectangle(
+                spike.x + SPIKE_HITBOX_OFFSET_X,
+                spike.y + SPIKE_HITBOX_OFFSET_Y,
+                SPIKE_HITBOX_WIDTH - 16f,
+                SPIKE_HITBOX_HEIGHT - 25f
+            );
 
             if (serverPlayer.getBounds().overlaps(spikeBounds)) {
                 System.out.println("[SERVEUR] Joueur " + serverPlayer.playerId + " a touché un spike !");
@@ -894,6 +910,7 @@ public class NetworkManager {
             }
         }
     }
+
 
     /**
      * VÉRIFIER SI LE JOUEUR ATTEINT LE DRAPEAU
