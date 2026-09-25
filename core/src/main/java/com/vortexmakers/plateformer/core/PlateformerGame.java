@@ -10,6 +10,7 @@ import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.GL20;
 import com.vortexmakers.plateformer.network.NetworkManager;
 import com.vortexmakers.plateformer.utils.AssetManager;
+import com.vortexmakers.plateformer.utils.FontManager;
 
 public class PlateformerGame extends Game {
     // RÉFÉRENCE AU SINGLETON
@@ -19,7 +20,9 @@ public class PlateformerGame extends Game {
     public void create() {
         // INITIALISATION DU SINGLETON
         networkManager = NetworkManager.getInstance();
-        setScreen(new LobbyScreen(this));
+        // Charger les polices une seule fois
+        FontManager.getInstance().load();
+        setScreen(new TitleScreen(this));
     }
 
     @Override
@@ -57,3 +60,4 @@ public class PlateformerGame extends Game {
         System.out.println("Jeu complètement nettoyé");
     }
 }
+

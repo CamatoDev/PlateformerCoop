@@ -4,8 +4,11 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.OrthographicCamera;
+import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
+import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.vortexmakers.plateformer.entities.Spike;
 import com.vortexmakers.plateformer.entities.Collectible;
@@ -89,6 +92,16 @@ public class GameScreen implements Screen, NetworkListener {
     private float levelTimeLimit = 180f; // Valeur par défaut, sera écrasée par le serveur
     private boolean timerStarted = false;
     private BitmapFont uiFont;
+
+    // HUD SPRITES
+    private Texture hudPortraitLocal;
+    private Texture hudPortraitRemote;
+    private Texture hudCoinIcon;
+    private Texture hudPanelBg;
+    private Texture hudTimerBg;
+    private String localCharacterType = "beige";
+    private String lastRemoteCharType = "";
+
     private int localPlayerScore = 0;
     private Map<Integer, Integer> remotePlayerScores; // Score de chaque joueur distant
 
@@ -108,6 +121,7 @@ public class GameScreen implements Screen, NetworkListener {
         this.game = game;
         this.networkManager = NetworkManager.getInstance();
         this.networkManager.setNetworkListener(this);
+        this.localCharacterType = selectedCharacter != null ? selectedCharacter : "beige";
 
         // Réinitialiser les flags
         this.transitioningToWin = false;
@@ -578,6 +592,31 @@ public class GameScreen implements Screen, NetworkListener {
         }
     }
 
+    private Texture createRoundedRect(int w, int h, Color color) {
+        Pixmap px = new Pixmap(w, h, Pixmap.Format.RGBA8888);
+        px.setColor(color);
+        int r = Math.min(h/2, 20);
+        px.fillRectangle(r, 0, w-2*r, h);
+        px.fillRectangle(0, r, w, h-2*r);
+        px.fillCircle(r, r, r);
+        px.fillCircle(w-r, r, r);
+        px.fillCircle(r, h-r, r);
+        px.fillCircle(w-r, h-r, r);
+        Texture t = new Texture(px); px.dispose(); return t;
+    }
+
+    private void loadHudTextures() {
+        String portraitPath = "Tiles/hud_player_" + localCharacterType + ".png";
+        if (Gdx.files.internal(portraitPath).exists()) {
+            hudPortraitLocal = new Texture(Gdx.files.internal(portraitPath));
+        }
+        if (Gdx.files.internal("Tiles/hud_coin.png").exists()) {
+            hudCoinIcon = new Texture(Gdx.files.internal("Tiles/hud_coin.png"));
+        }
+        hudPanelBg  = createRoundedRect(280, 80, new Color(0f, 0f, 0f, 0.55f));
+        hudTimerBg  = createRoundedRect(200, 60, new Color(0.79f,0.72f,1f,0.88f));
+    }
+
     /**
      * RENDU DE L'UI (Timer, Scores)
      */
@@ -585,34 +624,85 @@ public class GameScreen implements Screen, NetworkListener {
         batch.setProjectionMatrix(uiCamera.combined);
         batch.begin();
 
-        // TIMER AU CENTRE EN HAUT
-        String timerText;
-        if (!timerStarted) {
-            timerText = "En attente...";
-        } else {
-            int timeRemaining = (int) (levelTimeLimit - gameTimer);
-            if (timeRemaining < 0) timeRemaining = 0; // Éviter les négatifs
-            timerText = formatTime(timeRemaining);
+        final float W = Constants.SCREEN_WIDTH;
+        final float H = Constants.SCREEN_HEIGHT;
+        final float TOP = H - 10f;
+        final float panelW = 280f, panelH = 80f;
+        final float iconSize = 28f, portraitSize = 56f;
+
+        // === PANNEAU JOUEUR LOCAL (haut gauche) ===
+        float panelX = 15f, panelY = TOP - panelH;
+        if (hudPanelBg != null) {
+            batch.setColor(0,0,0,0.35f);
+            batch.draw(hudPanelBg, panelX+4, panelY-4, panelW, panelH);
+            batch.setColor(1,1,1,1);
+            batch.draw(hudPanelBg, panelX, panelY, panelW, panelH);
         }
+        if (hudPortraitLocal != null)
+            batch.draw(hudPortraitLocal, panelX+8f, panelY+(panelH-portraitSize)/2f, portraitSize, portraitSize);
+        if (hudCoinIcon != null)
+            batch.draw(hudCoinIcon, panelX+72f, panelY+panelH/2f+2f, iconSize, iconSize);
+        uiFont.getData().setScale(1.6f);
+        uiFont.setColor(1f,0.96f,0.72f,1f);
+        uiFont.draw(batch, "x "+localPlayerScore, panelX+106f, panelY+panelH/2f+24f);
+        uiFont.getData().setScale(1.1f);
+        uiFont.setColor(0.9f,0.9f,0.9f,1f);
+        uiFont.draw(batch, networkManager.isHost() ? "Hote" : "Joueur", panelX+72f, panelY+20f);
 
-        float timerX = (Constants.SCREEN_WIDTH - timerText.length() * 15) / 2f;
-        uiFont.draw(batch, timerText, timerX, Constants.SCREEN_HEIGHT - 20);
-
-        // SCORE DU JOUEUR LOCAL
-        String localScoreText = "You: " + localPlayerScore + " coins";
-        uiFont.draw(batch, localScoreText, 20, Constants.SCREEN_HEIGHT - 20);
-
-        // SCORES DES JOUEURS DISTANTS
-        int yOffset = 0;
+        // === PANNEAUX JOUEURS DISTANTS (haut droite) ===
+        float remotePanelX = W - panelW - 15f;
+        float remotePanelY = TOP - panelH;
         for (Map.Entry<Integer, Integer> entry : remotePlayerScores.entrySet()) {
-            String remoteScoreText = "Player " + entry.getKey() + ": " + entry.getValue() + " coins";
-            float textWidth = remoteScoreText.length() * 15;
-            uiFont.draw(batch, remoteScoreText,
-                Constants.SCREEN_WIDTH - textWidth - 20,
-                Constants.SCREEN_HEIGHT - 20 - yOffset);
-            yOffset += 30;
+            String remoteChar = playerCharacters.getOrDefault(entry.getKey(), "beige");
+            if (!remoteChar.equals(lastRemoteCharType)) {
+                String rPath = "Tiles/hud_player_"+remoteChar+".png";
+                if (Gdx.files.internal(rPath).exists()) {
+                    if (hudPortraitRemote != null) hudPortraitRemote.dispose();
+                    hudPortraitRemote = new Texture(Gdx.files.internal(rPath));
+                    lastRemoteCharType = remoteChar;
+                }
+            }
+            if (hudPanelBg != null) {
+                batch.setColor(0,0,0,0.35f);
+                batch.draw(hudPanelBg, remotePanelX+4, remotePanelY-4, panelW, panelH);
+                batch.setColor(1,1,1,1);
+                batch.draw(hudPanelBg, remotePanelX, remotePanelY, panelW, panelH);
+            }
+            if (hudPortraitRemote != null)
+                batch.draw(hudPortraitRemote, remotePanelX+8f, remotePanelY+(panelH-portraitSize)/2f, portraitSize, portraitSize);
+            if (hudCoinIcon != null)
+                batch.draw(hudCoinIcon, remotePanelX+72f, remotePanelY+panelH/2f+2f, iconSize, iconSize);
+            uiFont.getData().setScale(1.6f);
+            uiFont.setColor(1f,0.96f,0.72f,1f);
+            uiFont.draw(batch, "x "+entry.getValue(), remotePanelX+106f, remotePanelY+panelH/2f+24f);
+            uiFont.getData().setScale(1.1f);
+            uiFont.setColor(0.9f,0.9f,0.9f,1f);
+            uiFont.draw(batch, "Joueur "+entry.getKey(), remotePanelX+72f, remotePanelY+20f);
+            remotePanelY -= (panelH + 10f);
         }
 
+        // === TIMER CENTRAL ===
+        String timerText = !timerStarted ? "--:--" :
+            formatTime(Math.max(0, (int)(levelTimeLimit - gameTimer)));
+        float timeLeft = levelTimeLimit - gameTimer;
+        Color timerCol = timeLeft < 30f ?
+            new Color(1f,0.4f,0.4f,0.9f) : new Color(0.79f,0.72f,1f,0.88f);
+        if (hudTimerBg != null) {
+            batch.setColor(0,0,0,0.3f);
+            batch.draw(hudTimerBg, (W-200f)/2f+3, TOP-60f-3, 200f, 60f);
+            batch.setColor(timerCol);
+            batch.draw(hudTimerBg, (W-200f)/2f, TOP-60f, 200f, 60f);
+            batch.setColor(1,1,1,1);
+        }
+        uiFont.getData().setScale(2.2f);
+        GlyphLayout gl = new GlyphLayout(uiFont, timerText);
+        float ttX = (W - gl.width)/2f;
+        uiFont.setColor(0,0,0,0.6f);
+        uiFont.draw(batch, timerText, ttX+2, TOP-12f-2);
+        uiFont.setColor(Color.WHITE);
+        uiFont.draw(batch, timerText, ttX, TOP-12f);
+
+        uiFont.getData().setScale(1.0f);
         batch.end();
     }
 
@@ -1049,6 +1139,7 @@ public class GameScreen implements Screen, NetworkListener {
 
     @Override
     public void show() {
+        loadHudTextures();
         System.out.println("🎮 GameScreen SHOW() - Connecté: " + networkManager.isConnected() + ", Host: " + networkManager.isHost());
     }
 
@@ -1069,6 +1160,11 @@ public class GameScreen implements Screen, NetworkListener {
 
     @Override
     public void dispose() {
+        if (hudPortraitLocal != null) hudPortraitLocal.dispose();
+        if (hudPortraitRemote != null) hudPortraitRemote.dispose();
+        if (hudCoinIcon != null) hudCoinIcon.dispose();
+        if (hudPanelBg != null) hudPanelBg.dispose();
+        if (hudTimerBg != null) hudTimerBg.dispose();
         // Nettoyage des ressources graphiques
         if (batch != null) {
             batch.dispose();
