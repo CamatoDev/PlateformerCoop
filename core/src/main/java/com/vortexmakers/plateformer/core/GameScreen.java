@@ -22,6 +22,8 @@ import com.vortexmakers.plateformer.network.NetworkManager;
 import com.vortexmakers.plateformer.network.listeners.NetworkListener;
 import com.vortexmakers.plateformer.network.messages.*;
 
+import com.vortexmakers.plateformer.utils.AudioManager;
+
 import java.util.*;
 
 public class GameScreen implements Screen, NetworkListener {
@@ -115,6 +117,9 @@ public class GameScreen implements Screen, NetworkListener {
     private boolean localPlayerInvincible = false;
     private float invincibilityTimer = 0f;
     private static final float INVINCIBILITY_DURATION = 2.0f; // 2 secondes
+
+    // SUIVI DE L'ÉTAT GROUNDED POUR LA DÉTECTION D'ATTERRISSAGE
+    private boolean wasGrounded = false;
 
     public GameScreen(PlateformerGame game, NetworkManager networkManager, String selectedCharacter) {
         System.out.println("🎮 CREATION GameScreen - ID: " + networkManager.getLocalPlayerId() + ", Personnage: " + selectedCharacter);
@@ -376,6 +381,7 @@ public class GameScreen implements Screen, NetworkListener {
             Gdx.input.isKeyJustPressed(Input.Keys.W) ||
             Gdx.input.isKeyJustPressed(Input.Keys.UP)) {
             jumpInputCaptured = true;
+            AudioManager.getInstance().playJump();
         }
 
         networkUpdateTimer += delta;
@@ -402,6 +408,18 @@ public class GameScreen implements Screen, NetworkListener {
                     currentSequence
                 );
             }
+        }
+
+        // SON DE MARCHE : jouer si le joueur est au sol et se déplace
+        boolean movingHorizontally = Gdx.input.isKeyPressed(Input.Keys.LEFT)
+            || Gdx.input.isKeyPressed(Input.Keys.A)
+            || Gdx.input.isKeyPressed(Input.Keys.RIGHT)
+            || Gdx.input.isKeyPressed(Input.Keys.D);
+
+        if (localPlayer.isGrounded() && movingHorizontally) {
+            AudioManager.getInstance().playWalking(delta);
+        } else {
+            AudioManager.getInstance().resetWalkTimer();
         }
     }
 
@@ -860,9 +878,16 @@ public class GameScreen implements Screen, NetworkListener {
 
                 if (playerId == localPlayerId) {
                     // FORCER la mise à jour de l'état grounded pour l'animation
+                    boolean justLanded = !wasGrounded && playerData.isGrounded;
                     localPlayer.setGrounded(playerData.isGrounded);
                     localPlayer.setPosition(playerData.x, playerData.y);
                     localPlayer.setVelocity(playerData.velocityX, playerData.velocityY);
+
+                    // DÉTECTION D'ATTERRISSAGE : passage de en l'air → au sol
+                    if (justLanded) {
+                        AudioManager.getInstance().playLand();
+                    }
+                    wasGrounded = playerData.isGrounded;
                 } else {
                     Player remotePlayer = remotePlayers.get(playerId);
                     if (remotePlayer != null) {
@@ -926,6 +951,7 @@ public class GameScreen implements Screen, NetworkListener {
                         // Mettre à jour le score
                         if (collectibleData.collectedByPlayerId == localPlayerId) {
                             localPlayerScore++;
+                            AudioManager.getInstance().playCoin();
                             System.out.println("Score local: " + localPlayerScore);
                         } else {
                             remotePlayerScores.put(
@@ -970,6 +996,7 @@ public class GameScreen implements Screen, NetworkListener {
 
             if (message.playerId == localPlayerId) {
                 // C'est NOTRE respawn
+                AudioManager.getInstance().playFall();
                 localPlayer.setPosition(message.spawnX, message.spawnY);
                 localPlayer.setVelocity(0, 0);
                 localPlayer.setGrounded(false);

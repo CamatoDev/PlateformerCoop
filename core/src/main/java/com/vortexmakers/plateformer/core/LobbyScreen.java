@@ -333,6 +333,7 @@ public class LobbyScreen implements Screen, NetworkListener {
     private void selectCharacter(String ch) {
         selectedCharacter = ch;
         System.out.println("Personnage: " + ch);
+        com.vortexmakers.plateformer.utils.AudioManager.getInstance().playSwitch();
         if (networkManager.isConnected()) networkManager.sendCharacterChoice(ch);
         updateCharacterButtonsVisuals();
     }

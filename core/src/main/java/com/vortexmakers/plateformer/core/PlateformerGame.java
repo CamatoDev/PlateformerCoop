@@ -12,6 +12,8 @@ import com.vortexmakers.plateformer.network.NetworkManager;
 import com.vortexmakers.plateformer.utils.AssetManager;
 import com.vortexmakers.plateformer.utils.FontManager;
 
+import com.vortexmakers.plateformer.utils.AudioManager;
+
 public class PlateformerGame extends Game {
     // RÉFÉRENCE AU SINGLETON
     private NetworkManager networkManager;
@@ -22,6 +24,9 @@ public class PlateformerGame extends Game {
         networkManager = NetworkManager.getInstance();
         // Charger les polices une seule fois
         FontManager.getInstance().load();
+        // Charger et démarrer l'audio
+        AudioManager.getInstance().load();
+        AudioManager.getInstance().playMusic(); // Pixel Dash — persistant
         setScreen(new TitleScreen(this));
     }
 
@@ -50,6 +55,9 @@ public class PlateformerGame extends Game {
             assetManager.dispose();
             System.out.println("AssetManager disposé");
         }
+
+        // Nettoyage audio
+        AudioManager.getInstance().dispose();
 
         // Nettoyage réseau
         if (networkManager != null) {

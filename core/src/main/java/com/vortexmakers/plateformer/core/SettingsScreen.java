@@ -48,16 +48,23 @@ public class SettingsScreen implements Screen {
     public void show() {
         batch = new SpriteBatch();
         stage = new Stage(new FitViewport(VW, VH));
-        
-        // Utiliser FontManager pour des polices nettes (sans pixelisation)
+
         com.vortexmakers.plateformer.utils.FontManager.getInstance().load();
         titleFont = com.vortexmakers.plateformer.utils.FontManager.getInstance().getSubtitle();
         labelFont = com.vortexmakers.plateformer.utils.FontManager.getInstance().getBody();
         smallFont = com.vortexmakers.plateformer.utils.FontManager.getInstance().getSmall();
-        
-        background = new Texture(Gdx.files.internal("Backgrounds/background_color_hills.png"));
-        panelTex = createRoundedRect(PANEL_W, PANEL_H, new Color(0.72f,0.89f,1f,0.93f));
+
+        final com.vortexmakers.plateformer.utils.AudioManager audio =
+            com.vortexmakers.plateformer.utils.AudioManager.getInstance();
+
+        background  = new Texture(Gdx.files.internal("Backgrounds/background_color_hills.png"));
+        panelTex    = createRoundedRect(PANEL_W, PANEL_H, new Color(0.72f,0.89f,1f,0.93f));
+
+        // Textures bouton avec état hover
         btnReturnTex = createRoundedRect(250, 65, new Color(1f,0.71f,0.78f,1f));
+        Texture btnHovTex = createRoundedRect(250, 65, new Color(1f,0.87f,0.91f,1f));
+        Texture btnFsTex  = createRoundedRect(220, 55, new Color(0.74f,0.85f,1f,1f));
+        Texture btnFsHov  = createRoundedRect(220, 55, new Color(0.88f,0.94f,1f,1f));
 
         Skin skin = new Skin();
         skin.add("default-font", labelFont);
@@ -76,23 +83,44 @@ public class SettingsScreen implements Screen {
         knobPx.setColor(Color.WHITE); knobPx.fillCircle(10,10,10);
         ss.knob = new TextureRegionDrawable(new TextureRegion(new Texture(knobPx))); knobPx.dispose();
 
-        // Bouton style (pour Return et fullscreen toggle)
-        TextButton.TextButtonStyle tbs = new TextButton.TextButtonStyle();
-        tbs.font = labelFont; tbs.fontColor = Color.WHITE;
-        tbs.up = new TextureRegionDrawable(new TextureRegion(btnReturnTex));
-        skin.add("default", tbs);
+        // Style bouton Retour (avec hover)
+        TextButton.TextButtonStyle returnStyle = new TextButton.TextButtonStyle();
+        returnStyle.font = labelFont; returnStyle.fontColor = Color.WHITE;
+        returnStyle.up   = new TextureRegionDrawable(new TextureRegion(btnReturnTex));
+        returnStyle.over = new TextureRegionDrawable(new TextureRegion(btnHovTex));
+        returnStyle.down = new TextureRegionDrawable(new TextureRegion(btnReturnTex));
 
+        // Style bouton Fullscreen (avec hover)
+        TextButton.TextButtonStyle fsStyle = new TextButton.TextButtonStyle();
+        fsStyle.font = smallFont; fsStyle.fontColor = new Color(0.2f,0.3f,0.6f,1f);
+        fsStyle.up   = new TextureRegionDrawable(new TextureRegion(btnFsTex));
+        fsStyle.over = new TextureRegionDrawable(new TextureRegion(btnFsHov));
+        fsStyle.down = new TextureRegionDrawable(new TextureRegion(btnFsTex));
+
+        skin.add("default", returnStyle);
+
+        // Sliders connectés à AudioManager
         Slider musicSlider = new Slider(0, 1, 0.05f, false, ss);
-        musicSlider.setValue(musicVolume);
-        musicSlider.addListener(e -> { musicVolume = musicSlider.getValue(); return false; });
+        musicSlider.setValue(audio.getMusicVolume());
+        musicSlider.addListener(e -> {
+            musicVolume = musicSlider.getValue();
+            audio.setMusicVolume(musicVolume);
+            return false;
+        });
 
         Slider sfxSlider = new Slider(0, 1, 0.05f, false, ss);
-        sfxSlider.setValue(sfxVolume);
-        sfxSlider.addListener(e -> { sfxVolume = sfxSlider.getValue(); return false; });
+        sfxSlider.setValue(audio.getSfxVolume());
+        sfxSlider.addListener(e -> {
+            sfxVolume = sfxSlider.getValue();
+            audio.setSfxVolume(sfxVolume);
+            return false;
+        });
 
-        TextButton fullscreenBtn = new TextButton(isFullscreen ? "Activer" : "Desactiver", tbs);
+        // Bouton Plein écran
+        TextButton fullscreenBtn = new TextButton(isFullscreen ? "Desactiver" : "Activer", fsStyle);
         fullscreenBtn.addListener(new ClickListener() {
             public void clicked(InputEvent event, float x, float y) {
+                audio.playClick();
                 isFullscreen = !isFullscreen;
                 if (isFullscreen) {
                     Gdx.graphics.setFullscreenMode(Gdx.graphics.getDisplayMode());
@@ -102,16 +130,23 @@ public class SettingsScreen implements Screen {
                     fullscreenBtn.setText("Activer");
                 }
             }
-        });
-
-        TextButton returnBtn = new TextButton("< Retour", tbs);
-        returnBtn.addListener(new ClickListener() {
-            public void clicked(InputEvent event, float x, float y) {
-                game.setScreen(new TitleScreen(game));
+            public void enter(InputEvent event, float x, float y, int pointer, com.badlogic.gdx.scenes.scene2d.Actor fromActor) {
+                audio.playRollover();
             }
         });
 
-        // Table centré dans le panneau
+        // Bouton Retour
+        TextButton returnBtn = new TextButton("< Retour", returnStyle);
+        returnBtn.addListener(new ClickListener() {
+            public void clicked(InputEvent event, float x, float y) {
+                audio.playClick();
+                game.setScreen(new TitleScreen(game));
+            }
+            public void enter(InputEvent event, float x, float y, int pointer, com.badlogic.gdx.scenes.scene2d.Actor fromActor) {
+                audio.playRollover();
+            }
+        });
+
         Table table = new Table();
         table.setFillParent(true);
         table.center();
@@ -124,7 +159,7 @@ public class SettingsScreen implements Screen {
         table.add(sfxSlider).width(300).padBottom(30); table.row();
 
         table.add(new Label("Plein ecran", skin)).left().padRight(20);
-        table.add(fullscreenBtn).width(200).height(55).padBottom(30); table.row();
+        table.add(fullscreenBtn).width(220).height(55).padBottom(30); table.row();
 
         table.add(new Label("Controles :", skin)).left().colspan(2).padBottom(8); table.row();
         table.add(new Label("<- -> : Deplacement | Espace : Saut", skin)).colspan(2).padBottom(40); table.row();

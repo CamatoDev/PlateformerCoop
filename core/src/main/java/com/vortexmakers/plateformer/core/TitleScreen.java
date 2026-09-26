@@ -118,7 +118,12 @@ public class TitleScreen implements Screen {
         playBtn.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent e, float x, float y) {
+                com.vortexmakers.plateformer.utils.AudioManager.getInstance().playClick();
                 game.setScreen(new LobbyScreen(game));
+            }
+            @Override
+            public void enter(InputEvent e, float x, float y, int pointer, Actor fromActor) {
+                com.vortexmakers.plateformer.utils.AudioManager.getInstance().playRollover();
             }
         });
 
@@ -126,7 +131,12 @@ public class TitleScreen implements Screen {
         settingsBtn.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent e, float x, float y) {
+                com.vortexmakers.plateformer.utils.AudioManager.getInstance().playClick();
                 game.setScreen(new SettingsScreen(game));
+            }
+            @Override
+            public void enter(InputEvent e, float x, float y, int pointer, Actor fromActor) {
+                com.vortexmakers.plateformer.utils.AudioManager.getInstance().playRollover();
             }
         });
 
@@ -134,7 +144,12 @@ public class TitleScreen implements Screen {
         quitBtn.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent e, float x, float y) {
+                com.vortexmakers.plateformer.utils.AudioManager.getInstance().playClick();
                 Gdx.app.exit();
+            }
+            @Override
+            public void enter(InputEvent e, float x, float y, int pointer, Actor fromActor) {
+                com.vortexmakers.plateformer.utils.AudioManager.getInstance().playRollover();
             }
         });
 
