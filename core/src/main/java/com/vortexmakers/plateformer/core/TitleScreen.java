@@ -74,6 +74,7 @@ public class TitleScreen implements Screen {
 
         // S'assurer que les polices sont chargées
         FontManager.getInstance().load();
+        com.vortexmakers.plateformer.utils.AudioManager.getInstance().playMenuMusic();
 
         background = new Texture(Gdx.files.internal("Backgrounds/background_color_hills.png"));
 

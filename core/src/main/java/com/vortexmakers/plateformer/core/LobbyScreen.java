@@ -130,6 +130,7 @@ public class LobbyScreen implements Screen, NetworkListener {
     @Override
     public void show() {
         FontManager.getInstance().load();
+        com.vortexmakers.plateformer.utils.AudioManager.getInstance().playMenuMusic();
 
         camera = new OrthographicCamera();
         camera.setToOrtho(false, VW, VH);
@@ -224,6 +225,7 @@ public class LobbyScreen implements Screen, NetworkListener {
                     selectCharacter(ch);
                 }
             });
+            com.vortexmakers.plateformer.utils.AudioManager.attachHoverSound(btn);
             characterButtons.put(ch, btn);
             root.add(btn).width(CHAR_BTN_W).height(CHAR_BTN_H).pad(2);
         }
@@ -248,6 +250,7 @@ public class LobbyScreen implements Screen, NetworkListener {
         hostButton.addListener(new ClickListener() {
             @Override public void clicked(InputEvent e, float x, float y) { hostGame(); }
         });
+        com.vortexmakers.plateformer.utils.AudioManager.attachUiSounds(hostButton);
         connectionSection.add(hostButton).width(ACTION_BTN_W).height(ACTION_BTN_H).padBottom(4);
         connectionSection.row();
 
@@ -264,6 +267,7 @@ public class LobbyScreen implements Screen, NetworkListener {
         joinButton.addListener(new ClickListener() {
             @Override public void clicked(InputEvent e, float x, float y) { joinGame(); }
         });
+        com.vortexmakers.plateformer.utils.AudioManager.attachUiSounds(joinButton);
         connectionSection.add(joinButton).width(ACTION_BTN_W).height(ACTION_BTN_H).padBottom(6);
         connectionSection.row();
 
@@ -284,6 +288,7 @@ public class LobbyScreen implements Screen, NetworkListener {
                 game.setScreen(new TitleScreen(game));
             }
         });
+        com.vortexmakers.plateformer.utils.AudioManager.attachUiSounds(backBtn);
         connectionSection.add(backBtn).width(BACK_BTN_W).height(BACK_BTN_H);
 
         root.add(connectionSection).colspan(5).padBottom(2);
@@ -325,6 +330,7 @@ public class LobbyScreen implements Screen, NetworkListener {
         readyButton.addListener(new ClickListener() {
             @Override public void clicked(InputEvent e, float x, float y) { toggleReady(); }
         });
+        com.vortexmakers.plateformer.utils.AudioManager.attachHoverSound(readyButton);
         lobbySection.add(readyButton).width(READY_BTN_W).height(READY_BTN_H);
 
         root.add(lobbySection).colspan(5);
@@ -346,6 +352,7 @@ public class LobbyScreen implements Screen, NetworkListener {
     }
 
     private void toggleReady() {
+        com.vortexmakers.plateformer.utils.AudioManager.getInstance().playSwitch();
         isLocalReady = !isLocalReady;
         BitmapFont sf = FontManager.getInstance().getSmall();
 

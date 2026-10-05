@@ -3,8 +3,18 @@ package com.vortexmakers.plateformer.utils;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.audio.Music;
 import com.badlogic.gdx.audio.Sound;
+import com.badlogic.gdx.scenes.scene2d.Actor;
+import com.badlogic.gdx.scenes.scene2d.InputEvent;
+import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
+import com.badlogic.gdx.utils.Timer;
 
 public class AudioManager {
+
+    public static final String MENU_MUSIC = "Audios/Music/Pixel Dash.mp3";
+    public static final String GAME_MUSIC = "Audios/Music/Rainbow Sprint.mp3";
+
+    /** Delai (s) apres lequel la musique de menu reprend apres un jingle victoire / game over. */
+    private static final float JINGLE_RESUME_DELAY = 3.5f;
 
     private static AudioManager instance;
     public static AudioManager getInstance() {
@@ -16,6 +26,7 @@ public class AudioManager {
     private String currentMusicPath = "";
     private float musicVolume = 0.6f;
     private float sfxVolume   = 0.8f;
+    private Timer.Task resumeMenuMusicTask;
 
     private Sound sndClick;
     private Sound sndRollover;
@@ -26,6 +37,10 @@ public class AudioManager {
     private Sound sndFall;
     private Sound sndWalking;
     private Sound sndBreak;
+    private Sound sndVictory;
+    private Sound sndGameOver;
+    private Sound sndCheckpoint;
+    private Sound sndEnemyHit;
 
     private float walkTimer = 0f;
     private static final float WALK_INTERVAL = 0.35f;
@@ -42,6 +57,10 @@ public class AudioManager {
         sndFall    = loadSound("Audios/Platformer/fall.ogg");
         sndWalking = loadSound("Audios/Platformer/walking.ogg");
         sndBreak   = loadSound("Audios/Platformer/break.ogg");
+        sndVictory    = loadSound("Audios/Platformer/victory.wav");
+        sndGameOver   = loadSound("Audios/Platformer/game_over.wav");
+        sndCheckpoint = loadSound("Audios/Platformer/checkpoint.wav");
+        sndEnemyHit   = loadSound("Audios/Platformer/enemy_hit.wav");
         System.out.println("[AudioManager] Sons charges");
     }
 
@@ -55,11 +74,23 @@ public class AudioManager {
         return null;
     }
 
-    public void playMusic() { playMusic("Audios/Music/Pixel Dash.mp3"); }
+    // ============================================================
+    // MUSIQUE
+    // ============================================================
+
+    /** Musique des menus (Titre, Parametres, Lobby, ecrans de fin). Sans effet si deja en cours. */
+    public void playMenuMusic() { playMusic(MENU_MUSIC); }
+
+    /** Musique du niveau (GameScreen). Sans effet si deja en cours. */
+    public void playGameMusic() { playMusic(GAME_MUSIC); }
+
+    /** Compatibilite : musique par defaut = musique de menu. */
+    public void playMusic() { playMenuMusic(); }
 
     public void playMusic(String path) {
+        cancelResumeTask();
         if (currentMusicPath.equals(path) && music != null && music.isPlaying()) return;
-        if (music != null) { music.stop(); music.dispose(); }
+        if (music != null) { music.stop(); music.dispose(); music = null; }
         try {
             if (Gdx.files.internal(path).exists()) {
                 music = Gdx.audio.newMusic(Gdx.files.internal(path));
@@ -85,14 +116,69 @@ public class AudioManager {
     public float getMusicVolume() { return musicVolume; }
     public boolean isMusicPlaying() { return music != null && music.isPlaying(); }
 
+    private void cancelResumeTask() {
+        if (resumeMenuMusicTask != null) { resumeMenuMusicTask.cancel(); resumeMenuMusicTask = null; }
+    }
+
+    /** Coupe la musique, joue un jingle, puis relance la musique de menu apres un court delai. */
+    private void playJingle(Sound jingle, float vol) {
+        cancelResumeTask();
+        stopMusic();
+        play(jingle, vol);
+        resumeMenuMusicTask = Timer.schedule(new Timer.Task() {
+            @Override public void run() {
+                resumeMenuMusicTask = null;
+                playMenuMusic();
+            }
+        }, JINGLE_RESUME_DELAY);
+    }
+
+    // ============================================================
+    // SONS UI
+    // ============================================================
     public void playClick()    { play(sndClick,    sfxVolume * 0.9f); }
     public void playRollover() { play(sndRollover, sfxVolume * 0.45f); }
     public void playSwitch()   { play(sndSwitch,   sfxVolume * 0.8f); }
+
+    /** Ajoute uniquement le son de survol (hover) a un acteur. */
+    public static void attachHoverSound(Actor actor) {
+        actor.addListener(new ClickListener() {
+            @Override
+            public void enter(InputEvent event, float x, float y, int pointer, Actor fromActor) {
+                if (pointer == -1 && (fromActor == null || !fromActor.isDescendantOf(event.getListenerActor()))) {
+                    AudioManager.getInstance().playRollover();
+                }
+            }
+        });
+    }
+
+    /** Ajoute les sons de survol (hover) et de clic a un acteur (bouton). */
+    public static void attachUiSounds(Actor actor) {
+        attachHoverSound(actor);
+        actor.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                AudioManager.getInstance().playClick();
+            }
+        });
+    }
+
+    // ============================================================
+    // SONS GAMEPLAY
+    // ============================================================
     public void playJump()  { play(sndJump,  sfxVolume); }
     public void playCoin()  { play(sndCoin,  sfxVolume); }
     public void playLand()  { play(sndLand,  sfxVolume * 0.8f); }
     public void playFall()  { play(sndFall,  sfxVolume * 0.9f); }
     public void playBreak() { play(sndBreak, sfxVolume * 0.7f); }
+    public void playCheckpoint() { play(sndCheckpoint, sfxVolume); }
+    public void playEnemyHit()   { play(sndEnemyHit,   sfxVolume * 0.9f); }
+
+    // ============================================================
+    // JINGLES DE FIN DE NIVEAU
+    // ============================================================
+    public void playVictory()  { playJingle(sndVictory,  sfxVolume); }
+    public void playGameOver() { playJingle(sndGameOver, sfxVolume); }
 
     public void playWalking(float delta) {
         if (sndWalking == null) return;
@@ -112,6 +198,7 @@ public class AudioManager {
     }
 
     public void dispose() {
+        cancelResumeTask();
         if (music       != null) { music.stop(); music.dispose(); music = null; }
         if (sndClick    != null) { sndClick.dispose();    sndClick    = null; }
         if (sndRollover != null) { sndRollover.dispose(); sndRollover = null; }
@@ -122,6 +209,10 @@ public class AudioManager {
         if (sndFall     != null) { sndFall.dispose();     sndFall     = null; }
         if (sndWalking  != null) { sndWalking.dispose();  sndWalking  = null; }
         if (sndBreak    != null) { sndBreak.dispose();    sndBreak    = null; }
+        if (sndVictory    != null) { sndVictory.dispose();    sndVictory    = null; }
+        if (sndGameOver   != null) { sndGameOver.dispose();   sndGameOver   = null; }
+        if (sndCheckpoint != null) { sndCheckpoint.dispose(); sndCheckpoint = null; }
+        if (sndEnemyHit   != null) { sndEnemyHit.dispose();   sndEnemyHit   = null; }
         currentMusicPath = "";
         instance = null;
     }

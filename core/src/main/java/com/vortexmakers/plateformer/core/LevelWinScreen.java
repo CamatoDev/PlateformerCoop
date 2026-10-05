@@ -163,6 +163,8 @@ public class LevelWinScreen implements Screen {
         Gdx.input.setInputProcessor(stage);
         createButtonUI();
 
+        com.vortexmakers.plateformer.utils.AudioManager.getInstance().playVictory();
+
         System.out.println("LevelWinScreen affiché");
     }
 
@@ -179,6 +181,7 @@ public class LevelWinScreen implements Screen {
         menuBtn.addListener(new ClickListener() {
             @Override public void clicked(InputEvent e, float x, float y) { returnToMenu(); }
         });
+        com.vortexmakers.plateformer.utils.AudioManager.attachUiSounds(menuBtn);
 
         // Bouton "Niveau suivant" (grisé)
         TextButton.TextButtonStyle replayStyle = new TextButton.TextButtonStyle();

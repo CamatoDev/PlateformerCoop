@@ -1035,6 +1035,12 @@ public class GameScreen implements Screen, NetworkListener {
                 System.out.println("[CLIENT] Drapeau créé à X: " + message.flagX + ", Y: " + message.flagY);
             }
 
+            // Son de checkpoint si un joueur vient d'atteindre le drapeau
+            if (message.playersWhoFinished != null
+                    && !playersWhoFinishedLevel.containsAll(message.playersWhoFinished)) {
+                AudioManager.getInstance().playCheckpoint();
+            }
+
             // Mettre à jour la liste des joueurs qui ont fini
             playersWhoFinishedLevel = new HashSet<>(message.playersWhoFinished);
             allPlayersFinished = message.allPlayersFinished;
@@ -1167,6 +1173,7 @@ public class GameScreen implements Screen, NetworkListener {
     @Override
     public void show() {
         loadHudTextures();
+        AudioManager.getInstance().playGameMusic();
         System.out.println("🎮 GameScreen SHOW() - Connecté: " + networkManager.isConnected() + ", Host: " + networkManager.isHost());
     }
 

@@ -177,6 +177,8 @@ public class GameOverScreen implements Screen {
         stage = new Stage(new FitViewport(VW, VH));
         Gdx.input.setInputProcessor(stage);
         createButtonUI();
+
+        com.vortexmakers.plateformer.utils.AudioManager.getInstance().playGameOver();
     }
 
     private void createButtonUI() {
@@ -192,6 +194,7 @@ public class GameOverScreen implements Screen {
         menuBtn.addListener(new ClickListener() {
             @Override public void clicked(InputEvent e, float x, float y) { returnToMenu(); }
         });
+        com.vortexmakers.plateformer.utils.AudioManager.attachUiSounds(menuBtn);
 
         // Bouton "Réessayer" (désactivé)
         TextButton.TextButtonStyle retryStyle = new TextButton.TextButtonStyle();
