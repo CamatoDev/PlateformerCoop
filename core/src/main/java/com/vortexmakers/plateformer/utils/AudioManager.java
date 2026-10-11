@@ -48,6 +48,7 @@ public class AudioManager {
     private AudioManager() {}
 
     public void load() {
+        loadSettings();
         sndClick    = loadSound("Audios/UI/click1.wav");
         sndRollover = loadSound("Audios/UI/rollover1.wav");
         sndSwitch   = loadSound("Audios/UI/switch14.wav");
@@ -62,6 +63,42 @@ public class AudioManager {
         sndCheckpoint = loadSound("Audios/Platformer/checkpoint.wav");
         sndEnemyHit   = loadSound("Audios/Platformer/enemy_hit.wav");
         System.out.println("[AudioManager] Sons charges");
+    }
+
+    // ============================================================
+    // SAUVEGARDE DES VOLUMES (entre les sessions)
+    // ============================================================
+    private static final String PREFS_NAME = "KawaiiVerseSettings";
+    private Timer.Task saveTask;
+
+    private void loadSettings() {
+        try {
+            com.badlogic.gdx.Preferences prefs = Gdx.app.getPreferences(PREFS_NAME);
+            musicVolume = Math.max(0f, Math.min(1f, prefs.getFloat("musicVolume", musicVolume)));
+            sfxVolume   = Math.max(0f, Math.min(1f, prefs.getFloat("sfxVolume", sfxVolume)));
+        } catch (Exception e) {
+            System.out.println("[AudioManager] Preferences illisibles : " + e.getMessage());
+        }
+    }
+
+    /** Sauvegarde les volumes (differee pour ne pas ecrire a chaque mouvement de curseur). */
+    private void scheduleSave() {
+        if (saveTask != null) saveTask.cancel();
+        saveTask = Timer.schedule(new Timer.Task() {
+            @Override public void run() { saveNow(); }
+        }, 0.5f);
+    }
+
+    private void saveNow() {
+        saveTask = null;
+        try {
+            com.badlogic.gdx.Preferences prefs = Gdx.app.getPreferences(PREFS_NAME);
+            prefs.putFloat("musicVolume", musicVolume);
+            prefs.putFloat("sfxVolume", sfxVolume);
+            prefs.flush();
+        } catch (Exception e) {
+            System.out.println("[AudioManager] Sauvegarde impossible : " + e.getMessage());
+        }
     }
 
     private Sound loadSound(String path) {
@@ -112,6 +149,7 @@ public class AudioManager {
     public void setMusicVolume(float vol) {
         musicVolume = Math.max(0f, Math.min(1f, vol));
         if (music != null) music.setVolume(musicVolume);
+        scheduleSave();
     }
     public float getMusicVolume() { return musicVolume; }
     public boolean isMusicPlaying() { return music != null && music.isPlaying(); }
@@ -190,7 +228,10 @@ public class AudioManager {
     }
     public void resetWalkTimer() { walkTimer = WALK_INTERVAL; }
 
-    public void setSfxVolume(float vol) { sfxVolume = Math.max(0f, Math.min(1f, vol)); }
+    public void setSfxVolume(float vol) {
+        sfxVolume = Math.max(0f, Math.min(1f, vol));
+        scheduleSave();
+    }
     public float getSfxVolume() { return sfxVolume; }
 
     private void play(Sound sound, float vol) {
@@ -198,6 +239,7 @@ public class AudioManager {
     }
 
     public void dispose() {
+        if (saveTask != null) { saveTask.cancel(); saveNow(); }
         cancelResumeTask();
         if (music       != null) { music.stop(); music.dispose(); music = null; }
         if (sndClick    != null) { sndClick.dispose();    sndClick    = null; }

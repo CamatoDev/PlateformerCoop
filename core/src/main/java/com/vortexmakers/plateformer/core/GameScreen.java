@@ -121,6 +121,15 @@ public class GameScreen implements Screen, NetworkListener {
     // SUIVI DE L'ÉTAT GROUNDED POUR LA DÉTECTION D'ATTERRISSAGE
     private boolean wasGrounded = false;
 
+    // MENU PAUSE (ne gèle pas le jeu : bloque seulement nos contrôles)
+    private PauseMenu pauseMenu;
+    private boolean paused = false;
+    private boolean leaving = false;
+    private final Set<Integer> pausedPlayers = new HashSet<>(); // Joueurs distants en pause
+    private Texture hudPauseBtnBg;
+    private Texture hudPauseBar;
+    private Texture pauseBubbleBg;
+
     public GameScreen(PlateformerGame game, NetworkManager networkManager, String selectedCharacter) {
         System.out.println("🎮 CREATION GameScreen - ID: " + networkManager.getLocalPlayerId() + ", Personnage: " + selectedCharacter);
         this.game = game;
@@ -299,6 +308,11 @@ public class GameScreen implements Screen, NetworkListener {
         // RENDU DE L'UI (par-dessus tout)
         renderUI();
 
+        // MENU PAUSE (par-dessus tout, le jeu continue de tourner derrière)
+        if (paused && pauseMenu != null) {
+            pauseMenu.render(delta);
+        }
+
         // Mettre à jour la caméra
         updateCamera();
         // Mise à jour des collectibles
@@ -322,6 +336,9 @@ public class GameScreen implements Screen, NetworkListener {
      * METTRE À JOUR LE JOUEUR LOCAL (inputs seulement)
      */
     private void update(float delta) {
+        // Pause : Echap / P / bouton HUD
+        handlePauseInput();
+
         // Mise à jour du timer d'invincibilité
         if (localPlayerInvincible) {
             invincibilityTimer -= delta;
@@ -377,9 +394,10 @@ public class GameScreen implements Screen, NetworkListener {
      */
     private void sendNetworkUpdates(float delta) {
         // Capturer le saut CHAQUE FRAME (pas seulement au moment d'envoyer)
-        if (Gdx.input.isKeyJustPressed(Input.Keys.SPACE) ||
+        // En pause : les contrôles du joueur local sont désactivés
+        if (!paused && (Gdx.input.isKeyJustPressed(Input.Keys.SPACE) ||
             Gdx.input.isKeyJustPressed(Input.Keys.W) ||
-            Gdx.input.isKeyJustPressed(Input.Keys.UP)) {
+            Gdx.input.isKeyJustPressed(Input.Keys.UP))) {
             jumpInputCaptured = true;
             AudioManager.getInstance().playJump();
         }
@@ -390,12 +408,12 @@ public class GameScreen implements Screen, NetworkListener {
             networkUpdateTimer = 0f;
 
             if (networkManager.isConnected()) {
-                // RÉCUPÉRER LES INPUTS BRUTS
-                boolean leftPressed = Gdx.input.isKeyPressed(Input.Keys.LEFT) || Gdx.input.isKeyPressed(Input.Keys.A);
-                boolean rightPressed = Gdx.input.isKeyPressed(Input.Keys.RIGHT) || Gdx.input.isKeyPressed(Input.Keys.D);
+                // RÉCUPÉRER LES INPUTS BRUTS (aucune touche prise en compte en pause)
+                boolean leftPressed = !paused && (Gdx.input.isKeyPressed(Input.Keys.LEFT) || Gdx.input.isKeyPressed(Input.Keys.A));
+                boolean rightPressed = !paused && (Gdx.input.isKeyPressed(Input.Keys.RIGHT) || Gdx.input.isKeyPressed(Input.Keys.D));
 
                 // Utiliser le flag capturé
-                boolean jumpPressed = jumpInputCaptured;
+                boolean jumpPressed = !paused && jumpInputCaptured;
                 jumpInputCaptured = false; // Reset après envoi
 
                 int currentSequence = inputSequence;
@@ -410,11 +428,11 @@ public class GameScreen implements Screen, NetworkListener {
             }
         }
 
-        // SON DE MARCHE : jouer si le joueur est au sol et se déplace
-        boolean movingHorizontally = Gdx.input.isKeyPressed(Input.Keys.LEFT)
+        // SON DE MARCHE : jouer si le joueur est au sol et se déplace (jamais en pause)
+        boolean movingHorizontally = !paused && (Gdx.input.isKeyPressed(Input.Keys.LEFT)
             || Gdx.input.isKeyPressed(Input.Keys.A)
             || Gdx.input.isKeyPressed(Input.Keys.RIGHT)
-            || Gdx.input.isKeyPressed(Input.Keys.D);
+            || Gdx.input.isKeyPressed(Input.Keys.D));
 
         if (localPlayer.isGrounded() && movingHorizontally) {
             AudioManager.getInstance().playWalking(delta);
@@ -596,8 +614,11 @@ public class GameScreen implements Screen, NetworkListener {
         }
 
         // DESSINER LES JOUEURS DISTANTS (normalement)
-        for (Player remotePlayer : remotePlayers.values()) {
-            remotePlayer.render(batch);
+        for (Map.Entry<Integer, Player> entry : remotePlayers.entrySet()) {
+            entry.getValue().render(batch);
+            if (pausedPlayers.contains(entry.getKey())) {
+                renderPauseBubble(entry.getValue());
+            }
         }
     }
 
@@ -633,6 +654,34 @@ public class GameScreen implements Screen, NetworkListener {
         }
         hudPanelBg  = createRoundedRect(280, 80, new Color(0f, 0f, 0f, 0.55f));
         hudTimerBg  = createRoundedRect(200, 60, new Color(0.79f,0.72f,1f,0.88f));
+
+        // Bouton pause du HUD + bulle "En pause" (blanches : teintées au dessin)
+        hudPauseBtnBg = createRoundedRect(60, 60, Color.WHITE);
+        pauseBubbleBg = createRoundedRect(44, 30, Color.WHITE);
+        Pixmap barPx = new Pixmap(4, 4, Pixmap.Format.RGBA8888);
+        barPx.setColor(Color.WHITE);
+        barPx.fill();
+        hudPauseBar = new Texture(barPx);
+        barPx.dispose();
+    }
+
+    /**
+     * BULLE "EN PAUSE" AU-DESSUS D'UN JOUEUR DISTANT (deux barres, léger balancement)
+     */
+    private void renderPauseBubble(Player p) {
+        if (pauseBubbleBg == null || hudPauseBar == null) return;
+        float bob = (float) Math.sin(System.currentTimeMillis() / 250.0) * 2.5f;
+        float bw = 44f, bh = 30f;
+        float x = p.getPosition().x + 20f - bw / 2f;   // sprite 40x40 à partir de la position
+        float y = p.getPosition().y + 40f + 6f + bob;
+
+        batch.setColor(0f, 0f, 0f, 0.25f);
+        batch.draw(pauseBubbleBg, x + 2, y - 2, bw, bh);
+        batch.setColor(0.60f, 0.55f, 0.90f, 0.95f);
+        batch.draw(pauseBubbleBg, x, y, bw, bh);
+        batch.setColor(1f, 1f, 1f, 1f);
+        batch.draw(hudPauseBar, x + 14f, y + 7f, 6f, 16f);
+        batch.draw(hudPauseBar, x + 24f, y + 7f, 6f, 16f);
     }
 
     /**
@@ -719,6 +768,23 @@ public class GameScreen implements Screen, NetworkListener {
         uiFont.draw(batch, timerText, ttX+2, TOP-12f-2);
         uiFont.setColor(Color.WHITE);
         uiFont.draw(batch, timerText, ttX, TOP-12f);
+
+        // === BOUTON PAUSE (à droite du timer) ===
+        if (hudPauseBtnBg != null && hudPauseBar != null) {
+            com.badlogic.gdx.math.Rectangle r = hudPauseRect();
+            boolean hover = !paused && r.contains(mouseInUi());
+            batch.setColor(0, 0, 0, 0.3f);
+            batch.draw(hudPauseBtnBg, r.x + 3, r.y - 3, r.width, r.height);
+            if (hover) batch.setColor(1f, 0.85f, 0.90f, 0.95f);
+            else       batch.setColor(1f, 0.71f, 0.78f, 0.92f);
+            batch.draw(hudPauseBtnBg, r.x, r.y, r.width, r.height);
+            batch.setColor(1, 1, 1, 1);
+            float barW = 10f, barH = 26f, gap = 8f;
+            float bx = r.x + (r.width - (2 * barW + gap)) / 2f;
+            float by = r.y + (r.height - barH) / 2f;
+            batch.draw(hudPauseBar, bx, by, barW, barH);
+            batch.draw(hudPauseBar, bx + barW + gap, by, barW, barH);
+        }
 
         uiFont.getData().setScale(1.0f);
         batch.end();
@@ -830,11 +896,112 @@ public class GameScreen implements Screen, NetworkListener {
         Gdx.app.postRunnable(() -> {
             System.out.println("Joueur parti: " + message.playerId);
 
-            // Supprimer le joueur distant
-            remotePlayers.remove(message.playerId);
+            // Supprimer le joueur distant (entité, indicateur de pause, panneau HUD)
+            Player leaver = remotePlayers.remove(message.playerId);
+            if (leaver != null) leaver.dispose();
+            pausedPlayers.remove(message.playerId);
+            remotePlayerScores.remove(message.playerId);
+            playersWhoFinishedLevel.remove(message.playerId);
 
             System.out.println("Nombre de joueurs distants: " + remotePlayers.size());
         });
+    }
+
+    /**
+     * UN JOUEUR DISTANT OUVRE / FERME SON MENU PAUSE
+     */
+    @Override
+    public void onPlayerPauseChanged(PlayerPauseMessage message) {
+        Gdx.app.postRunnable(() -> {
+            if (message.playerId == localPlayerId) return; // Notre propre écho
+            if (message.paused) pausedPlayers.add(message.playerId);
+            else pausedPlayers.remove(message.playerId);
+        });
+    }
+
+    // ============================================================
+    // MENU PAUSE
+    // ============================================================
+
+    /**
+     * OUVRIR / FERMER LE MENU PAUSE.
+     * Le jeu continue pour les autres : on bloque seulement NOS contrôles
+     * et on prévient les autres joueurs (indicateur "En pause").
+     */
+    private void setPaused(boolean value) {
+        if (paused == value) return;
+        if (value && (!gameReady || transitioningToWin || transitioningToGameOver)) return;
+
+        paused = value;
+        jumpInputCaptured = false;
+        // Envoi immédiat d'un input "aucune touche" pour que le personnage s'arrête
+        networkUpdateTimer = Constants.NETWORK_UPDATE_INTERVAL;
+        AudioManager.getInstance().resetWalkTimer();
+
+        if (networkManager.isConnected()) networkManager.sendPauseState(value);
+
+        if (pauseMenu != null) {
+            if (value) pauseMenu.show();
+            else pauseMenu.hide();
+        }
+    }
+
+    /** Rectangle du bouton pause du HUD (coordonnées de la caméra UI). */
+    private com.badlogic.gdx.math.Rectangle hudPauseRect() {
+        final float W = Constants.SCREEN_WIDTH;
+        final float TOP = Constants.SCREEN_HEIGHT - 10f;
+        return new com.badlogic.gdx.math.Rectangle(W / 2f + 115f, TOP - 60f, 60f, 60f);
+    }
+
+    /** Position de la souris en coordonnées de la caméra UI. */
+    private com.badlogic.gdx.math.Vector2 mouseInUi() {
+        float mx = Gdx.input.getX() * (Constants.SCREEN_WIDTH / (float) Gdx.graphics.getWidth());
+        float my = (Gdx.graphics.getHeight() - Gdx.input.getY()) * (Constants.SCREEN_HEIGHT / (float) Gdx.graphics.getHeight());
+        return new com.badlogic.gdx.math.Vector2(mx, my);
+    }
+
+    /** Touches Echap / P et bouton HUD. Appelé à chaque frame. */
+    private void handlePauseInput() {
+        // Le niveau se termine pendant la pause : on referme le menu proprement
+        if (paused && (transitioningToWin || transitioningToGameOver)) {
+            setPaused(false);
+            return;
+        }
+
+        boolean key = Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)
+                   || Gdx.input.isKeyJustPressed(Input.Keys.P);
+        if (key) {
+            if (paused) {
+                // Echap ferme d'abord la confirmation "Quitter ?", sinon reprend la partie
+                if (pauseMenu == null || !pauseMenu.handleBack()) setPaused(false);
+            } else {
+                setPaused(true);
+            }
+            return;
+        }
+
+        if (!paused && Gdx.input.justTouched()
+                && hudPauseRect().contains(mouseInUi())) {
+            AudioManager.getInstance().playClick();
+            setPaused(true);
+        }
+    }
+
+    /**
+     * QUITTER LA PARTIE (depuis le menu pause)
+     * Même déconnexion propre que les autres retours au menu : listener coupé puis disconnect().
+     * - Client : les autres joueurs reçoivent PlayerLeaveMessage et continuent.
+     * - Hôte  : le serveur s'arrête, les clients sont renvoyés au menu (connexion perdue).
+     */
+    private void leaveGame() {
+        if (leaving) return;
+        leaving = true;
+        System.out.println("[GameScreen] Le joueur quitte la partie (hôte: " + networkManager.isHost() + ")");
+
+        if (pauseMenu != null) pauseMenu.hide();
+        networkManager.setNetworkListener(null);
+        if (networkManager.isConnected()) networkManager.disconnect();
+        game.setScreen(new TitleScreen(game));
     }
 
     /**
@@ -1168,12 +1335,19 @@ public class GameScreen implements Screen, NetworkListener {
 
         // Mettre à jour la caméra UI
         uiCamera.setToOrtho(false, width, height);
+
+        if (pauseMenu != null) pauseMenu.resize(width, height);
     }
 
     @Override
     public void show() {
         loadHudTextures();
         AudioManager.getInstance().playGameMusic();
+        pauseMenu = new PauseMenu(new PauseMenu.Callbacks() {
+            @Override public void onResume() { setPaused(false); }
+            @Override public void onQuitConfirmed() { leaveGame(); }
+        }, networkManager.isHost());
+        pauseMenu.resize(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
         System.out.println("🎮 GameScreen SHOW() - Connecté: " + networkManager.isConnected() + ", Host: " + networkManager.isHost());
     }
 
@@ -1199,6 +1373,10 @@ public class GameScreen implements Screen, NetworkListener {
         if (hudCoinIcon != null) hudCoinIcon.dispose();
         if (hudPanelBg != null) hudPanelBg.dispose();
         if (hudTimerBg != null) hudTimerBg.dispose();
+        if (hudPauseBtnBg != null) hudPauseBtnBg.dispose();
+        if (hudPauseBar != null) hudPauseBar.dispose();
+        if (pauseBubbleBg != null) pauseBubbleBg.dispose();
+        if (pauseMenu != null) { pauseMenu.dispose(); pauseMenu = null; }
         // Nettoyage des ressources graphiques
         if (batch != null) {
             batch.dispose();

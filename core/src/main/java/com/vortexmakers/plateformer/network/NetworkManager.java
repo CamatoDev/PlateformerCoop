@@ -1236,6 +1236,9 @@ public class NetworkManager {
 
         // GameStart
         kryo.register(GameStartMessage.class);
+
+        // Pause
+        kryo.register(PlayerPauseMessage.class);
     }
 
     /**
@@ -1308,6 +1311,15 @@ public class NetworkManager {
     }
 
     /**
+     * ANNONCER QUE LE JOUEUR LOCAL OUVRE / FERME SON MENU PAUSE
+     */
+    public void sendPauseState(boolean paused) {
+        if (client != null && client.isConnected()) {
+            client.sendTCP(new PlayerPauseMessage(localPlayerId, paused));
+        }
+    }
+
+    /**
      * GESTION DES MESSAGES COTÉ SERVEUR
      */
     private void handleServerMessage(Connection connection, Object object) {
@@ -1319,6 +1331,11 @@ public class NetworkManager {
             handlePlayerCharacter((PlayerCharacterMessage) object);
         }else if (object instanceof PlayerReadyMessage) {
             handlePlayerReady((PlayerReadyMessage) object);
+        } else if (object instanceof PlayerPauseMessage) {
+            // Relayer l'état de pause à tous les clients (indicateur "En pause")
+            if (server != null) {
+                server.sendToAllTCP(object);
+            }
         }
     }
 
@@ -1489,6 +1506,7 @@ public class NetworkManager {
         serverPlayers.remove(playerId); // Nettoyer le joueur serveur
         lastReceivedSequence.remove(playerId); // Nettoyer la séquence
         playerReadyStates.remove(playerId); // Nettoyer le ready state
+        playersWhoFinished.remove(playerId); // Il ne compte plus pour la victoire
 
         // Informer tous les clients
         PlayerLeaveMessage leaveMessage = new PlayerLeaveMessage(playerId);
@@ -1499,6 +1517,11 @@ public class NetworkManager {
 
         // Mettre à jour le lobby
         sendLobbyStateToAll();
+
+        // Les joueurs restants ont peut-être tous fini le niveau : réévaluer le drapeau
+        if (!playersWhoFinished.isEmpty() && !serverPlayers.isEmpty()) {
+            sendFinishFlagStateToAll();
+        }
 
         System.out.println("Joueur déconnecté: " + playerId);
     }
@@ -1581,6 +1604,10 @@ public class NetworkManager {
         } else if (object instanceof PlayerRespawnMessage) {
             if (networkListener != null) {
                 networkListener.onPlayerRespawned((PlayerRespawnMessage) object);
+            }
+        } else if (object instanceof PlayerPauseMessage) {
+            if (networkListener != null) {
+                networkListener.onPlayerPauseChanged((PlayerPauseMessage) object);
             }
         } else if (object instanceof PlayerCharacterMessage) {
             if (networkListener != null) {

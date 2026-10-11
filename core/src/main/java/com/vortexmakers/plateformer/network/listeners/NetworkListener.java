@@ -25,4 +25,7 @@ public interface NetworkListener {
     void onConnectionFailed(String reason);
     void onPlayerReadyStateReceived(LobbyStateMessage message);
     void onGameStartReceived();
+
+    /** Un joueur a ouvert / fermé son menu pause (implémentation optionnelle). */
+    default void onPlayerPauseChanged(PlayerPauseMessage message) {}
 }
